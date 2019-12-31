@@ -1,30 +1,43 @@
 {
-  "name": "typescript-package-template",
+  "name": "luogu-painter",
   "version": "0.0.0",
-  "description": "Template for Node.js packages in TypeScript.",
+  "description": "Paints images on Luogu paint board efficiently.",
   "keywords": [],
-  "homepage": "https://github.com/sjx233/typescript-package-template#readme",
-  "bugs": "https://github.com/sjx233/typescript-package-template/issues",
+  "homepage": "https://github.com/sjx233/luogu-painter#readme",
+  "bugs": "https://github.com/sjx233/luogu-painter/issues",
   "license": "MIT",
   "author": "sjx233",
   "main": "lib/index.js",
   "typings": "lib/index",
+  "bin": "./lib/cli.js",
   "directories": {
     "lib": "lib",
     "test": "lib/test"
   },
-  "repository": "github:sjx233/typescript-package-template",
+  "repository": "github:sjx233/luogu-painter",
   "scripts": {
     "lint": "eslint --ext .js,.ts src",
     "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1",
+    "preversion": "npm run build",
     "postversion": "git push && git push --tags"
   },
-  "dependencies": {},
+  "dependencies": {
+    "color-diff": "^1.1.0",
+    "commander": "^4.0.1",
+    "csv-parse": "^4.8.3",
+    "node-fetch": "^2.6.0",
+    "pngjs": "^3.4.0",
+    "ws": "^7.2.1"
+  },
   "devDependencies": {
-    "@types/node": "^13.1.1",
-    "@typescript-eslint/eslint-plugin": "^2.13.0",
-    "@typescript-eslint/parser": "^2.13.0",
+    "@types/color-diff": "^1.1.0",
+    "@types/node": "^13.1.2",
+    "@types/node-fetch": "^2.5.4",
+    "@types/pngjs": "^3.4.0",
+    "@types/ws": "^6.0.4",
+    "@typescript-eslint/eslint-plugin": "^2.14.0",
+    "@typescript-eslint/parser": "^2.14.0",
     "eslint": "^6.8.0",
     "typescript": "^3.7.4"
   },

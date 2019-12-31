@@ -1,3 +1,3 @@
-# typescript-package-template
+# luogu-painter
 
-Template for Node.js packages in TypeScript.
+Paints images on Luogu paint board efficiently.
