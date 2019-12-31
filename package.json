@@ -1,0 +1,32 @@
+{
+  "name": "typescript-package-template",
+  "version": "0.0.0",
+  "description": "Template for Node.js packages in TypeScript.",
+  "keywords": [],
+  "homepage": "https://github.com/sjx233/typescript-package-template#readme",
+  "bugs": "https://github.com/sjx233/typescript-package-template/issues",
+  "license": "MIT",
+  "author": "sjx233",
+  "main": "lib/index.js",
+  "typings": "lib/index",
+  "directories": {
+    "lib": "lib",
+    "test": "lib/test"
+  },
+  "repository": "github:sjx233/typescript-package-template",
+  "scripts": {
+    "lint": "eslint --ext .js,.ts src",
+    "build": "tsc",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "postversion": "git push && git push --tags"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^13.1.1",
+    "@typescript-eslint/eslint-plugin": "^2.13.0",
+    "@typescript-eslint/parser": "^2.13.0",
+    "eslint": "^6.8.0",
+    "typescript": "^3.7.4"
+  },
+  "engines": {}
+}
