@@ -3,18 +3,38 @@ import WebSocket = require("ws");
 import { EventEmitter } from "events";
 
 export default class Socket extends EventEmitter {
-  public readonly ws: WebSocket;
+  private ws: WebSocket | undefined;
 
-  public constructor(url: string) {
+  public constructor(url?: string) {
     super();
+    this.onMessage = this.onMessage.bind(this);
+    if (url) this.connect(url);
+  }
+
+  public connect(url: string, noEmit = false): this {
+    this.close(true);
+    const reconnect = this.connect.bind(this, url, true);
     (this.ws = new WebSocket(url))
-      .once("open", this.emit.bind(this, "open"))
-      .once("close", this.emit.bind(this, "close"))
-      .on("message", this.onMessage.bind(this))
-      .on("error", this.emit.bind(this, "error"));
+      .on("message", this.onMessage)
+      .once("close", reconnect)
+      .once("error", reconnect);
+    if (!noEmit) this.ws.once("open", () => this.emit("open"));
+    return this;
+  }
+
+  public close(noEmit = false): void {
+    if (!this.ws) return;
+    this.ws
+      .removeAllListeners()
+      .once("close", () => {
+        if (!noEmit) this.emit("close");
+        this.ws = undefined;
+      })
+      .close();
   }
 
   public send(data: string): this {
+    if (!this.ws) throw new Error("socket is not open");
     this.ws.send(data);
     return this;
   }
@@ -44,7 +64,7 @@ export default class Socket extends EventEmitter {
     return this;
   }
 
-  public disconnectChannel(channel: string, param: string, exclusiveKey = ""): this {
+  public quitChannel(channel: string, param: string, exclusiveKey = ""): this {
     this.sendJSON({
       "type": "disconnect_channel",
       "channel": channel,
@@ -52,10 +72,6 @@ export default class Socket extends EventEmitter {
       "exclusive_key": exclusiveKey
     });
     return this;
-  }
-
-  public close(): void {
-    this.ws.close();
   }
 
   private onMessage(data: any): void {

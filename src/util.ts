@@ -1,4 +1,7 @@
 import { closest, RGBColor } from "color-diff";
+import { once } from "events";
+import * as fs from "fs";
+import { PNG } from "pngjs";
 
 export function findNextIndex<T>(arr: readonly T[], begin: number, predicate: (value: T, index: number, obj: readonly T[]) => unknown): number {
   for (let i = begin, len = arr.length; i < len; i++)
@@ -6,6 +9,16 @@ export function findNextIndex<T>(arr: readonly T[], begin: number, predicate: (v
   for (let i = 0; i < begin; i++)
     if (predicate(arr[i], i, arr)) return i;
   return -1;
+}
+
+export function shuffle<T>(arr: T[]): T[] {
+  for (let len = arr.length; len;) {
+    const index = Math.trunc(Math.random() * len--);
+    const tmp = arr[len];
+    arr[len] = arr[index];
+    arr[index] = tmp;
+  }
+  return arr;
 }
 
 export function autoRetry<T>(func: () => Promise<T>): Promise<T> {
@@ -72,4 +85,10 @@ export async function toPixels({ width, height, data }: { width: number; height:
       pixels.push([imageX + x, imageY + y, color]);
     }
   return pixels;
+}
+
+export async function readImage(fileName: string, imageX: number, imageY: number, boardWidth: number, boardHeight: number): Promise<[number, number, number][]> {
+  const image = fs.createReadStream(fileName).pipe(new PNG);
+  await once(image, "parsed");
+  return await toPixels(image, imageX, imageY, boardWidth, boardHeight);
 }

@@ -24,14 +24,22 @@ export class PaintBoard extends EventEmitter {
       for (const [x, y, color] of pending)
         data[x][y] = color;
       pending.length = 0;
-      this.emit("load");
       this.socket.removeAllListeners("message.paintboard.")
         .on("message.paintboard.", ({ type, x, y, color }) => {
           if (type !== "paintboard_update") return;
           data[x][y] = color;
           this.emit("update", x, y, color);
         });
+      this.emit("load");
     })();
+  }
+
+  public get width(): number {
+    return this.data?.length ?? 0;
+  }
+
+  public get height(): number {
+    return this.data?.[0].length ?? 0;
   }
 
   public get(x: number, y: number): number {
