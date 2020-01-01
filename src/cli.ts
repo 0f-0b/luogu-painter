@@ -20,7 +20,7 @@ commander
   .requiredOption("-x, --image-x <x>", "image X coordinate in pixels", integer)
   .requiredOption("-y, --image-y <y>", "image Y coordinate in pixels", integer)
   .option("-r, --randomize", "randomize the order of pixels")
-  .option("-t, --cooldown-time", "cooldown time in ms", integer, 10000)
+  .option("-t, --cooldown-time <time>", "cooldown time in ms", integer, 10000)
   .parse(process.argv);
 const [usersFileName, imageFileName] = commander.args;
 if (!(usersFileName && imageFileName)) commander.help();
@@ -45,6 +45,7 @@ const {
   process.stdout.write(`board loaded: ${width}x${height}\n`);
   const pixels = await readImage(imageFileName, imageX, imageY, width, height);
   if (randomize) shuffle(pixels);
+  const delayTime = cooldownTime / users.size;
   let cur = 0;
 
   function needPaint([x, y, color]: [number, number, number]): boolean {
@@ -62,14 +63,16 @@ const {
         let count = 0;
         for (const pixel of pixels)
           if (needPaint(pixel)) count++;
-        process.stdout.write(`${uid}: (${x}, ${y}) = ${color}, ${count} pixels left\n`);
+        process.stdout.write(`${uid}: (${x}, ${y}) = ${color}, ${count} ${count === 1 ? "pixel" : "pixels"} left\n`);
       }
       await delay(cooldownTime);
     }
   }
 
-  for (const [uid, clientId] of users)
+  for (const [uid, clientId] of users) {
     openSession(uid, clientId);
+    await delay(delayTime);
+  }
 })().catch(error => {
   process.stderr.write(`unexpected error: ${error?.stack ?? error}\n`);
   process.exit(1);
