@@ -52,11 +52,11 @@ const {
     process.stdout.write(`[${uid}] opening session\n`);
     for (; ;) {
       const next = findNextIndex(pixels, cur, needPaint);
+      cur = next + 1;
       if (next !== -1) {
         const [x, y, color] = pixels[next];
         await autoRetry(() => board.set(x, y, color, uid, clientId));
-        process.stdout.write(`[${uid}] set (${x}, ${y}) to ${color}\n`);
-        cur = next + 1;
+        process.stdout.write(`${uid}: (${x}, ${y}) = ${color}\n`);
       }
       await delay(10000);
     }
