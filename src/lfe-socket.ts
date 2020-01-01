@@ -14,11 +14,14 @@ export default class Socket extends EventEmitter {
   public connect(url: string, noEmit = false): this {
     this.close(true);
     const reconnect = this.connect.bind(this, url, true);
-    (this.ws = new WebSocket(url))
+    const ws = new WebSocket(url)
       .on("message", this.onMessage)
+      .once("open", () => {
+        this.ws = ws;
+        if (!noEmit) this.emit("open");
+      })
       .once("close", reconnect)
       .once("error", reconnect);
-    if (!noEmit) this.ws.once("open", () => this.emit("open"));
     return this;
   }
 
@@ -28,9 +31,9 @@ export default class Socket extends EventEmitter {
       .removeAllListeners()
       .once("close", () => {
         if (!noEmit) this.emit("close");
-        this.ws = undefined;
       })
       .close();
+    this.ws = undefined;
   }
 
   public send(data: string): this {
