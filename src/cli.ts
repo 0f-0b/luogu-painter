@@ -59,7 +59,10 @@ const {
       if (next !== -1) {
         const [x, y, color] = pixels[next];
         await autoRetry(() => board.set(x, y, color, uid, clientId));
-        process.stdout.write(`${uid}: (${x}, ${y}) = ${color}\n`);
+        let count = 0;
+        for (const pixel of pixels)
+          if (needPaint(pixel)) count++;
+        process.stdout.write(`${uid}: (${x}, ${y}) = ${color}, ${count} pixels left\n`);
       }
       await delay(cooldownTime);
     }
