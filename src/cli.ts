@@ -60,15 +60,23 @@ const {
       if (next !== -1) {
         const [x, y, color] = pixels[next];
         await autoRetry(() => board.set(x, y, color, uid, clientId));
-        let count = 0;
-        for (const pixel of pixels)
-          if (needPaint(pixel)) count++;
-        process.stdout.write(`${uid}: (${x}, ${y}) = ${color}, ${count} ${count === 1 ? "pixel" : "pixels"} left\n`);
+        process.stdout.write(`${uid}: (${x}, ${y}) = ${color}\n`);
       }
       await delay(cooldownTime);
     }
   }
 
+  let last = 0;
+  board.on("update", () => {
+    let count = 0;
+    for (const pixel of pixels)
+      if (needPaint(pixel)) count++;
+    if (count === last) return;
+    last = count;
+    if (count === 0) process.stdout.write("done\n");
+    else if (count === 1) process.stdout.write("1 pixel left\n");
+    else process.stdout.write(`${count} pixels left\n`);
+  });
   for (const [uid, clientId] of users) {
     openSession(uid, clientId);
     await delay(delayTime);
