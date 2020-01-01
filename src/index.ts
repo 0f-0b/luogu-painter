@@ -61,6 +61,5 @@ export class PaintBoard extends EventEmitter {
     });
     const { status, data: message } = await res.json();
     if (status < 200 || status >= 300) throw new Error(`failed to set pixel, ${status}: ${message}`);
-    data[x][y] = color;
   }
 }
