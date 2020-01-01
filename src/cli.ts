@@ -20,17 +20,20 @@ commander
   .requiredOption("-x, --image-x <x>", "image X coordinate in pixels", integer)
   .requiredOption("-y, --image-y <y>", "image Y coordinate in pixels", integer)
   .option("-r, --randomize", "randomize the order of pixels")
+  .option("-t, --cooldown-time", "cooldown time in ms", integer, 10000)
   .parse(process.argv);
 const [usersFileName, imageFileName] = commander.args;
 if (!(usersFileName && imageFileName)) commander.help();
 const {
   imageX,
   imageY,
-  randomize
+  randomize,
+  cooldownTime
 } = commander.opts() as {
   imageX: number;
   imageY: number;
   randomize?: true;
+  cooldownTime: number;
 };
 
 (async () => {
@@ -49,7 +52,7 @@ const {
   }
 
   async function openSession(uid: number, clientId: string): Promise<never> {
-    process.stdout.write(`[${uid}] opening session\n`);
+    process.stdout.write(`${uid}: session opened\n`);
     for (; ;) {
       const next = findNextIndex(pixels, cur, needPaint);
       cur = next + 1;
@@ -58,14 +61,12 @@ const {
         await autoRetry(() => board.set(x, y, color, uid, clientId));
         process.stdout.write(`${uid}: (${x}, ${y}) = ${color}\n`);
       }
-      await delay(10000);
+      await delay(cooldownTime);
     }
   }
 
-  for (const [uid, clientId] of users) {
+  for (const [uid, clientId] of users)
     openSession(uid, clientId);
-    await delay(1000);
-  }
 })().catch(error => {
   process.stderr.write(`unexpected error: ${error?.stack ?? error}\n`);
   process.exit(1);
