@@ -1,9 +1,11 @@
 import { once } from "events";
 import * as fs from "fs";
+import { Session } from ".";
 import parseCSV = require("csv-parse");
 
-export async function readUsers(fileName: string): Promise<Map<number, string>> {
-  const sessions = new Map<number, string>();
+export async function readSessions(fileName: string): Promise<Session[]> {
+  const sessions: Session[] = [];
+  const uids = new Set<number>();
   const parser = fs.createReadStream(fileName).pipe(parseCSV({
     cast(value, { column }) {
       switch (column) {
@@ -17,11 +19,12 @@ export async function readUsers(fileName: string): Promise<Map<number, string>> 
     trim: true
   }));
   parser.on("readable", () => {
-    let line: { uid: number; clientId: string; };
+    let line: Session;
     while ((line = parser.read())) {
-      const { uid, clientId } = line;
-      if (sessions.has(uid)) throw new Error(`duplicate UID ${uid}`);
-      sessions.set(uid, clientId);
+      const uid = line.uid;
+      if (uids.has(uid)) throw new Error(`duplicate UID ${uid}`);
+      sessions.push(line);
+      uids.add(uid);
     }
   });
   await once(parser, "end");

@@ -1,4 +1,4 @@
-import { closest, RGBColor } from "color-diff";
+import { diff as colorDiff, LabColor, rgb_to_lab as rgbToLab } from "color-diff";
 import { once } from "events";
 import * as fs from "fs";
 import { PNG } from "pngjs";
@@ -21,74 +21,58 @@ export function shuffle<T>(arr: T[]): T[] {
   return arr;
 }
 
-export function autoRetry<T>(func: () => Promise<T>): Promise<T> {
-  return new Promise(function tryResolve(resolve) {
-    func().then(resolve, () => setTimeout(tryResolve, 500, resolve));
-  });
-}
-
 export function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-export const palette: readonly Readonly<RGBColor>[] = [
-  { R: 0, G: 0, B: 0 },
-  { R: 255, G: 255, B: 255 },
-  { R: 170, G: 170, B: 170 },
-  { R: 85, G: 85, B: 85 },
-  { R: 254, G: 211, B: 199 },
-  { R: 255, G: 196, B: 206 },
-  { R: 250, G: 172, B: 142 },
-  { R: 255, G: 139, B: 131 },
-  { R: 244, G: 67, B: 54 },
-  { R: 233, G: 30, B: 99 },
-  { R: 226, G: 102, B: 158 },
-  { R: 156, G: 39, B: 176 },
-  { R: 103, G: 58, B: 183 },
-  { R: 63, G: 81, B: 181 },
-  { R: 0, G: 70, B: 112 },
-  { R: 5, G: 113, B: 151 },
-  { R: 33, G: 150, B: 243 },
-  { R: 0, G: 188, B: 212 },
-  { R: 59, G: 229, B: 219 },
-  { R: 151, G: 253, B: 220 },
-  { R: 22, G: 115, B: 0 },
-  { R: 55, G: 169, B: 60 },
-  { R: 137, G: 230, B: 66 },
-  { R: 215, G: 255, B: 7 },
-  { R: 255, G: 246, B: 209 },
-  { R: 248, G: 203, B: 140 },
-  { R: 255, G: 235, B: 59 },
-  { R: 255, G: 193, B: 7 },
-  { R: 255, G: 152, B: 0 },
-  { R: 255, G: 87, B: 34 },
-  { R: 184, G: 63, B: 39 },
-  { R: 121, G: 85, B: 72 }
-];
+export async function autoRetry<T>(func: () => Promise<T>, maxCount = 0): Promise<T> {
+  return new Promise(function retry(resolve, reject) {
+    func().then(resolve, error => {
+      if (--maxCount) setTimeout(retry, 500, resolve, reject);
+      else reject(error);
+    });
+  });
+}
 
-export async function toPixels({ width, height, data }: { width: number; height: number; data: Uint8Array; },
-  imageX: number, imageY: number, boardWidth: number, boardHeight: number): Promise<[number, number, number][]> {
+export interface Image {
+  width: number;
+  height: number;
+  data: Uint8Array | Uint8ClampedArray;
+}
+
+export type Palette = readonly (readonly [number, number, number])[];
+export type Pixels = [number, number, number][];
+
+export function toPixels({ width, height, data }: Image, imageX: number, imageY: number, boardWidth: number, boardHeight: number, palette: Palette): Pixels {
   const startX = Math.max(-imageX, 0);
   const startY = Math.max(-imageY, 0);
   const endX = Math.min(boardWidth - imageX, width);
   const endY = Math.min(boardHeight - imageY, height);
-  const pixels: [number, number, number][] = [];
+  const pixels: Pixels = [];
+  const paletteSize = palette.length;
+  if (!paletteSize) throw new Error("palette is empty");
+  const paletteColors: readonly LabColor[] = palette.map(([red, green, blue]) => rgbToLab({ R: red, G: green, B: blue }));
   for (let y = startY; y < endY; y++)
     for (let x = startX; x < endX; x++) {
       const index = (y * width + x) << 2;
-      if (data[index + 3] < 0.5) continue;
-      const color = palette.indexOf(closest({
-        R: data[index],
-        G: data[index + 1],
-        B: data[index + 2]
-      }, palette));
-      pixels.push([imageX + x, imageY + y, color]);
+      if (data[index + 3] < 0x80) continue;
+      const color = rgbToLab({ R: data[index], G: data[index + 1], B: data[index + 2] });
+      let colorIndex = 0;
+      let minDiff = colorDiff(color, paletteColors[0]);
+      for (let i = 1; i < paletteSize; i++) {
+        const diff = colorDiff(color, paletteColors[i]);
+        if (diff < minDiff) {
+          colorIndex = i;
+          minDiff = diff;
+        }
+      }
+      pixels.push([imageX + x, imageY + y, colorIndex]);
     }
   return pixels;
 }
 
-export async function readImage(fileName: string, imageX: number, imageY: number, boardWidth: number, boardHeight: number): Promise<[number, number, number][]> {
+export async function readImage(fileName: string, imageX: number, imageY: number, boardWidth: number, boardHeight: number, palette: Palette): Promise<Pixels> {
   const image = fs.createReadStream(fileName).pipe(new PNG);
   await once(image, "parsed");
-  return await toPixels(image, imageX, imageY, boardWidth, boardHeight);
+  return toPixels(image, imageX, imageY, boardWidth, boardHeight, palette);
 }
