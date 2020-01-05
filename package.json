@@ -1,5 +1,5 @@
 {
-  "name": "luogu-painter",
+  "name": "@sjx233/luogu-painter",
   "version": "0.0.0",
   "description": "Paints images on Luogu paint board efficiently.",
   "keywords": [],
@@ -32,7 +32,7 @@
   },
   "devDependencies": {
     "@types/color-diff": "^1.1.0",
-    "@types/node": "^13.1.2",
+    "@types/node": "^13.1.4",
     "@types/node-fetch": "^2.5.4",
     "@types/pngjs": "^3.4.0",
     "@types/ws": "^6.0.4",
