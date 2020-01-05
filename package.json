@@ -1,6 +1,6 @@
 {
   "name": "@sjx233/luogu-painter",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Paints images on Luogu paint board efficiently.",
   "keywords": [],
   "homepage": "https://github.com/sjx233/luogu-painter#readme",
