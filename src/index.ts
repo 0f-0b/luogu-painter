@@ -1,4 +1,4 @@
-import { EventEmitter, once } from "events";
+import { EventEmitter } from "events";
 import fetch from "node-fetch";
 import Socket from "./lfe-socket";
 import { autoRetry } from "./util";
@@ -6,32 +6,42 @@ import { autoRetry } from "./util";
 export const endpoint = "https://www.luogu.com.cn/paintBoard";
 
 export class PaintBoard extends EventEmitter {
-  private readonly socket = new Socket("wss://ws.luogu.com.cn/ws");
+  private readonly socket = new Socket;
   private data: number[][] | undefined;
 
   public constructor() {
     super();
-    (async () => {
-      await once(this.socket, "open");
-      const pending: [number, number, number][] = [];
-      this.socket.joinChannel("paintboard", "")
-        .on("message.paintboard.", ({ type, x, y, color }) => {
-          if (type !== "paintboard_update") return;
-          pending.push([x, y, color]);
-        });
-      const res = await autoRetry(() => fetch(endpoint + "/board"));
-      const data = this.data = (await res.text()).trim().split("\n").map(row => Array.from(row, c => parseInt(c, 32)));
-      for (const [x, y, color] of pending)
+    this.socket
+      .on("open", this.onOpen.bind(this))
+      .on("close", (code, reason) => {
+        if (code > 1000 && code < 2000) {
+          this.emit("reconnect", reason);
+          this.socket.connect();
+        }
+      });
+  }
+
+  private async onOpen(): Promise<void> {
+    const pending: [number, number, number][] = [];
+    this.socket
+      .joinChannel("paintboard", "")
+      .on("message.paintboard.", ({ type, x, y, color }) => {
+        if (type !== "paintboard_update") return;
+        pending.push([x, y, color]);
+      });
+    const res = await autoRetry(() => fetch(endpoint + "/board"));
+    const data = this.data = (await res.text()).trim().split("\n").map(row => Array.from(row, c => parseInt(c, 32)));
+    for (const [x, y, color] of pending)
+      data[x][y] = color;
+    pending.length = 0;
+    this.socket
+      .removeAllListeners("message.paintboard.")
+      .on("message.paintboard.", ({ type, x, y, color }) => {
+        if (type !== "paintboard_update") return;
         data[x][y] = color;
-      pending.length = 0;
-      this.socket.removeAllListeners("message.paintboard.")
-        .on("message.paintboard.", ({ type, x, y, color }) => {
-          if (type !== "paintboard_update") return;
-          data[x][y] = color;
-          this.emit("update", x, y, color);
-        });
-      this.emit("load");
-    })();
+        this.emit("update", x, y, color);
+      });
+    this.emit("load");
   }
 
   public get width(): number {

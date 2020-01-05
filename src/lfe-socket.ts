@@ -1,43 +1,34 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import WebSocket = require("ws");
 import { EventEmitter } from "events";
+import * as WebSocket from "ws";
 
 export default class Socket extends EventEmitter {
-  private ws: WebSocket | undefined;
+  private ws!: WebSocket;
 
-  public constructor(url?: string) {
+  public constructor(public readonly url = "wss://ws.luogu.com.cn/ws") {
     super();
     this.onMessage = this.onMessage.bind(this);
-    if (url) this.connect(url);
+    this.connect();
   }
 
-  public connect(url: string, noEmit = false): this {
-    this.close(true);
-    const reconnect = this.connect.bind(this, url, true);
-    const ws = new WebSocket(url)
+  public connect(): this {
+    if (this.ws) {
+      const state = this.ws.readyState;
+      if (state === WebSocket.CONNECTING || state === WebSocket.OPEN) throw new Error("socket is already open");
+      this.ws.removeAllListeners();
+    }
+    this.ws = new WebSocket(this.url)
       .on("message", this.onMessage)
-      .once("open", () => {
-        this.ws = ws;
-        if (!noEmit) this.emit("open");
-      })
-      .once("close", reconnect)
-      .once("error", reconnect);
+      .once("open", this.emit.bind(this, "open"))
+      .once("close", this.emit.bind(this, "close"));
     return this;
   }
 
-  public close(noEmit = false): void {
-    if (!this.ws) return;
-    this.ws
-      .removeAllListeners()
-      .once("close", () => {
-        if (!noEmit) this.emit("close");
-      })
-      .close();
-    this.ws = undefined;
+  public close(): void {
+    this.ws.close();
   }
 
   public send(data: string): this {
-    if (!this.ws) throw new Error("socket is not open");
     this.ws.send(data);
     return this;
   }

@@ -16,34 +16,31 @@ commander
   .name(name)
   .version(version)
   .description(description)
-  .usage("[options] <users file> <PNG image>")
-  .requiredOption("-x, --image-x <x>", "image X coordinate in pixels", integer)
-  .requiredOption("-y, --image-y <y>", "image Y coordinate in pixels", integer)
+  .usage("[options] <users file> <PNG image file> <x> <y>")
   .option("-r, --randomize", "randomize the order of pixels")
   .option("-t, --cooldown-time <time>", "cooldown time in ms", integer, 10000)
   .parse(process.argv);
-const [usersFileName, imageFileName] = commander.args;
-if (!(usersFileName && imageFileName)) commander.help();
+const [usersFile, imageFile, x, y] = commander.args;
+if (!(usersFile && imageFile)) commander.help();
+const imageX = integer(x);
+const imageY = integer(y);
 const {
-  imageX,
-  imageY,
   randomize,
   cooldownTime
 } = commander.opts() as {
-  imageX: number;
-  imageY: number;
   randomize?: true;
   cooldownTime: number;
 };
 
 (async () => {
-  const users = await readUsers(usersFileName);
+  const users = await readUsers(usersFile);
   if (!users.size) throw new Error("users file is empty");
   const board = new PaintBoard;
   await once(board, "load");
   const { width, height } = board;
-  process.stdout.write(`board loaded: ${width}x${height}\n`);
-  const pixels = await readImage(imageFileName, imageX, imageY, width, height);
+  process.stdout.write(`board: loaded ${width}x${height}\n`);
+  board.on("reconnect", reason => process.stderr.write(`board: reconnecting (${reason})\n`));
+  const pixels = await readImage(imageFile, imageX, imageY, width, height);
   if (randomize) shuffle(pixels);
   const delayTime = cooldownTime / users.size;
   let cur = 0;
@@ -66,16 +63,23 @@ const {
     }
   }
 
-  let last = 0;
-  board.on("update", () => {
+  function countRemaining(): number {
     let count = 0;
     for (const pixel of pixels)
       if (needPaint(pixel)) count++;
+    return count;
+  }
+
+  function printCount(count: number): void {
+    process.stdout.write(`${count} ${count === 1 ? "pixel" : "pixels"} left\n`);
+  }
+
+  let last = countRemaining();
+  printCount(last);
+  board.on("update", () => {
+    const count = countRemaining();
     if (count === last) return;
-    last = count;
-    if (count === 0) process.stdout.write("done\n");
-    else if (count === 1) process.stdout.write("1 pixel left\n");
-    else process.stdout.write(`${count} pixels left\n`);
+    printCount(last = count);
   });
   for (const [uid, clientId] of users) {
     openSession(uid, clientId);
