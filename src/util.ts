@@ -25,12 +25,9 @@ export function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-export async function autoRetry<T>(func: () => Promise<T>, maxCount = 0): Promise<T> {
+export function autoRetry<T>(func: () => Promise<T>, maxCount = 0): Promise<T> {
   return new Promise(function retry(resolve, reject) {
-    func().then(resolve, error => {
-      if (--maxCount) setTimeout(retry, 500, resolve, reject);
-      else reject(error);
-    });
+    func().then(resolve, error => --maxCount ? setTimeout(retry, 500, resolve, reject) : reject(error));
   });
 }
 
