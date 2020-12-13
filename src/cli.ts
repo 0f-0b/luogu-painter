@@ -1,18 +1,24 @@
 #!/usr/bin/env node
 
-import * as commander from "commander";
+import * as program from "commander";
 import { once } from "events";
-import { PaintBoard, palette, Session } from ".";
+import { knuthShuffle } from "knuth-shuffle";
+import retry from "p-retry";
+import { promisify } from "util";
+import { PaintBoard, palette, Pixel, Session } from ".";
 import { readSessions } from "./sessions";
-import { autoRetry, delay, findNextIndex, readImage, shuffle } from "./util";
+import { count, findNextIndex, readImage, stringifyCount } from "./util";
 import { description, name, version } from "./version";
 
+const delay = promisify(setTimeout);
+
 function integer(value: string): number {
-  if (!/^\d+$/.test(value)) throw new TypeError(`'${value}' is not an integer`);
+  if (!/^\d+$/.test(value))
+    throw new TypeError(`'${value}' is not an integer`);
   return parseInt(value, 10);
 }
 
-commander
+program
   .name(name)
   .version(version)
   .description(description)
@@ -21,15 +27,12 @@ commander
   .option("-r, --randomize", "randomize the order of pixels")
   .option("-t, --cooldown <time>", "cooldown time in ms", integer, 10000)
   .parse(process.argv);
-const [imageFile, x, y] = commander.args;
-if (!(imageFile && x && y)) commander.help();
+const [imageFile, x, y] = program.args;
+if (!(imageFile && x && y))
+  program.help();
 const imageX = integer(x);
 const imageY = integer(y);
-const {
-  sessions: sessionsFile,
-  randomize,
-  cooldown
-} = commander.opts() as {
+const { sessions: sessionsFile, randomize, cooldown } = program.opts() as {
   sessions?: string;
   randomize?: true;
   cooldown: number;
@@ -38,62 +41,57 @@ const {
 (async () => {
   const sessions = sessionsFile ? await readSessions(sessionsFile) : [];
   const sessionCount = sessions.length;
-  if (sessionCount) process.stderr.write(`using ${sessionCount} ${sessionCount === 1 ? "session" : "sessions"}: ${sessions.map(session => session.uid).join(", ")}\n`);
-  else process.stderr.write("no sessions given, starting in watch mode\n");
+  if (sessionCount)
+    console.log(`Using ${stringifyCount(sessionCount, "session", "sessions")}: ${sessions.map(session => session.uid).join(", ")}`);
+  else
+    console.log("No sessions given; starting in watch mode");
   const board = new PaintBoard;
   await once(board, "load");
   const { width, height } = board;
-  process.stderr.write(`loaded board (${width}x${height})\n`);
-  board.on("reconnect", reason => process.stderr.write(`reconnecting to board: ${reason}\n`));
+  console.log(`Board loaded (${width}x${height})`);
   const pixels = await readImage(imageFile, imageX, imageY, width, height, palette);
-  if (randomize) shuffle(pixels);
+  if (randomize)
+    knuthShuffle(pixels);
   const pixelCount = pixels.length;
-  process.stderr.write(`${pixelCount} ${pixelCount === 1 ? "pixel" : "pixels"} in total${randomize ? " (randomized)" : ""}\n`);
+  console.log(`${stringifyCount(pixelCount, "pixel", "pixels")} in total`);
   const delayTime = cooldown / sessionCount;
   let cur = 0;
 
-  function needPaint([x, y, color]: [number, number, number]): boolean {
+  function needPaint({ x, y, color }: Pixel): boolean {
     return board.get(x, y) !== color;
   }
 
   async function openSession(session: Session): Promise<never> {
-    const uid = session.uid;
-    process.stderr.write(`${uid}: session opened\n`);
+    console.log(session.uid, "Session opened");
     for (; ;) {
       const next = findNextIndex(pixels, cur, needPaint);
       cur = next + 1;
       if (next !== -1) {
-        const [x, y, color] = pixels[next];
-        await autoRetry(() => board.set(x, y, color, session), 5);
-        process.stderr.write(`${uid}: (${x}, ${y}) = ${color}\n`);
+        const { x, y, color } = pixels[next];
+        await retry(() => board.set(x, y, color, session), { retries: 4 });
+        console.log(session.uid, `(${x}, ${y}) = ${color}`);
       }
       await delay(cooldown);
     }
   }
 
-  function countRemaining(): number {
-    let count = 0;
-    for (const pixel of pixels)
-      if (needPaint(pixel)) count++;
-    return count;
-  }
-
   function printCount(count: number): void {
-    process.stderr.write(`${count} ${count === 1 ? "pixel" : "pixels"} left\n`);
+    console.log(`${stringifyCount(count, "pixel", "pixels")} left`);
   }
 
-  let last = countRemaining();
+  let last = count(pixels, needPaint);
   printCount(last);
   board.on("update", () => {
-    const count = countRemaining();
-    if (count === last) return;
-    printCount(last = count);
+    const cur = count(pixels, needPaint);
+    if (cur === last)
+      return;
+    printCount(last = cur);
   });
   for (const session of sessions) {
-    openSession(session).catch(error => process.stderr.write(`${session.uid}: unexpected error: ${error?.stack ?? error}\n`));
+    openSession(session).catch(error => console.error(session.uid, String(error)));
     await delay(delayTime);
   }
 })().catch(error => {
-  process.stderr.write(`unexpected error: ${error?.stack ?? error}\n`);
+  console.error(error);
   process.exit(1);
 });

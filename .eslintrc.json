@@ -2,54 +2,24 @@
   "root": true,
   "extends": [
     "eslint:recommended",
-    "plugin:@typescript-eslint/eslint-recommended",
-    "plugin:@typescript-eslint/recommended"
+    "plugin:@typescript-eslint/recommended",
+    "plugin:@typescript-eslint/recommended-requiring-type-checking"
   ],
   "plugins": [
     "@typescript-eslint"
   ],
   "parser": "@typescript-eslint/parser",
   "parserOptions": {
-    "ecmaVersion": 10,
     "sourceType": "module",
     "project": "./tsconfig.json"
   },
   "env": {
-    "es6": true,
-    "node": true
+    "es2020": true,
+    "node": true,
+    "browser": true
   },
   "rules": {
-    "@typescript-eslint/explicit-function-return-type": [
-      "warn",
-      {
-        "allowExpressions": true,
-        "allowTypedFunctionExpressions": true,
-        "allowHigherOrderFunctions": true
-      }
-    ],
-    "@typescript-eslint/indent": [
-      "warn",
-      2
-    ],
-    "@typescript-eslint/member-delimiter-style": [
-      "warn",
-      {
-        "singleline": {
-          "requireLast": true
-        }
-      }
-    ],
-    "linebreak-style": [
-      "warn",
-      "unix"
-    ],
-    "quotes": [
-      "warn",
-      "double"
-    ],
-    "semi": [
-      "warn",
-      "always"
-    ]
+    // typescript-eslint/typescript-eslint#1824
+    "indent": "off"
   }
 }
