@@ -1,6 +1,6 @@
 {
   "name": "@sjx233/luogu-painter",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Paints images on Luogu paint board efficiently.",
   "keywords": [],
   "homepage": "https://github.com/sjx233/luogu-painter#readme",
@@ -9,7 +9,9 @@
   "author": "sjx233",
   "main": "lib/index.js",
   "typings": "lib/index",
-  "bin": "./lib/cli.js",
+  "bin": {
+    "luogu-painter": "lib/cli.js"
+  },
   "directories": {
     "lib": "lib",
     "test": "lib/test"
