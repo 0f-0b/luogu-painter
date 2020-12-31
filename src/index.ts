@@ -1,9 +1,11 @@
 import { EventEmitter } from "events";
-import fetch from "node-fetch";
 import retry from "p-retry";
 import { URLSearchParams } from "url";
-import { Socket } from "./lfe-socket";
-import { fetchLuogu } from "./luogu-api";
+import { debuglog } from "util";
+import { Socket } from "./luogu-socket";
+import { fetchJsonWithTimeout, fetchTextWithTimeout } from "./util";
+
+const debug = debuglog("luogu-painter");
 
 // colorlist.flatMap(color => Array.from(color.matchAll(/\d+/g), c => parseInt(c, 10)));
 export const palette = new Uint8Array([
@@ -47,72 +49,74 @@ export interface Session {
 }
 
 export interface Pixel {
-  x: number;
   y: number;
+  x: number;
   color: number;
 }
 
 export class PaintBoard extends EventEmitter {
-  private static readonly endpoint = "https://www.luogu.com.cn/paintBoard";
-  private static readonly board = PaintBoard.endpoint + "/board";
-  private static readonly paint = PaintBoard.endpoint + "/paint";
-  private readonly socket = new Socket;
-  private data: number[][] | undefined;
+  private _width = 0;
+  private _data = new Uint8Array;
 
-  public constructor() {
+  public constructor(public readonly endpoint: string, public readonly socketUrl: string) {
     super();
-    this.socket
-      .on("open", () => {
-        const pending: Pixel[] = [];
-        this.socket
-          .channel("paintboard")
-          .on("join", () => void retry(() => fetch(PaintBoard.board).then(res => res.text()))
-            .then(text => {
-              this.data = text.trim().split("\n")
-                .map(line => Array.from(line, c => parseInt(c, 32)));
-              for (const { x, y, color } of pending)
-                this.data[x][y] = color;
-              pending.length = 0;
-              this.emit("load");
-            })
-            .catch(error => this.emit("error", error)))
-          .on("message", ({ type, x, y, color }: { type: string; } & Pixel) => {
-            if (type !== "paintboard_update")
-              return;
-            if (this.data) {
-              this.data[x][y] = color;
-              this.emit("update", x, y, color);
-            } else
-              pending.push({ x, y, color });
-          });
-      })
-      .on("error", this.emit.bind(this, "error"));
+    const pending: Pixel[] = [];
+    const socket = new Socket(socketUrl);
+    socket
+      .on("open", () => socket.channel("paintboard")
+        .on("join", () => void retry(() => fetchTextWithTimeout(endpoint + "/board", 30000))
+          .then(text => {
+            const raw = text.trim().split("\n").map(line => Array.from(line, c => parseInt(c, 32)));
+            const width = this._width = raw.length;
+            const height = raw[0].length;
+            const data = this._data = new Uint8Array(width * height);
+            for (let y = 0; y < height; y++)
+              for (let x = 0; x < width; x++)
+                data[y * width + x] = raw[x][y];
+            for (const { x, y, color } of pending)
+              data[y * width + x] = color;
+            pending.length = 0;
+            debug("load", Date.now(), width, height, data.join(""));
+            this.emit("load", width, height, new Uint8Array(data));
+          })
+          .catch(error => this.emit("error", error)))
+        .on("message", ({ type, y, x, color }: { type: string; } & Pixel) => {
+          if (type !== "paintboard_update")
+            return;
+          if (!this._data) {
+            pending.push({ y, x, color });
+            return;
+          }
+          this._data[y * this._width + x] = color;
+          debug("update", Date.now(), y, x, color);
+          this.emit("update", y, x, color);
+        }))
+      .on("error", error => this.emit("error", error));
   }
 
-  public get width(): number {
-    return this.data?.length ?? 0;
+  public get(y: number, x: number): number | undefined {
+    return this._data[y * this._width + x];
   }
 
-  public get height(): number {
-    return this.data?.[0].length ?? 0;
-  }
-
-  public get(x: number, y: number): number | undefined {
-    return this.data?.[x][y];
-  }
-
-  public async set(x: number, y: number, color: number, { uid, clientId }: Session): Promise<void> {
-    await fetchLuogu(PaintBoard.paint, {
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Cookie": `_uid=${uid}; __client_id=${clientId}`
-      },
-      body: new URLSearchParams({
-        x: x.toString(),
-        y: y.toString(),
-        color: color.toString()
-      }),
-      method: "POST"
+  public async set(y: number, x: number, color: number, { uid, clientId }: Session): Promise<void> {
+    const { status, data } = await retry(async () => {
+      const { status, data } = await fetchJsonWithTimeout(this.endpoint + "/paint", 30000, {
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Cookie": `_uid=${uid}; __client_id=${clientId}`
+        },
+        body: new URLSearchParams({
+          x: x.toString(),
+          y: y.toString(),
+          color: color.toString()
+        }),
+        method: "POST"
+      }) as { status: number; data: unknown; };
+      if (status === 408 || status >= 500) // transient error
+        throw Object.assign(new Error(String(data)), { status });
+      return { status, data };
     });
+    if (status >= 300)
+      throw Object.assign(new Error(String(data)), { status });
   }
 }

@@ -1,8 +1,8 @@
-import debug from "debug";
 import { EventEmitter } from "events";
+import { debuglog } from "util";
 import * as WebSocket from "ws";
 
-const debugLog = debug("lfe-socket");
+const debug = debuglog("luogu-socket");
 
 interface BaseIncomingMessage {
   _channel: string;
@@ -60,43 +60,28 @@ export type OutgoingMessage =
   | JoinChannelMessage
   | QuitChannelMessage;
 
-export class Channel extends EventEmitter {
+class Channel extends EventEmitter {
   public constructor(public readonly socket: Socket, public readonly channel: string, public readonly param: string, public readonly exclusiveKey = "") {
     super();
-    socket._send({
+    socket.on("message", this._onMessage)._send({
       "type": "join_channel",
       "channel": channel,
       "channel_param": param,
       "exclusive_key": exclusiveKey
-    }).on("message", (message: IncomingMessage) => {
-      if (message._channel !== this.channel || message._channel_param !== this.param)
-        return;
-      switch (message._ws_type) {
-        case "server_broadcast":
-          this.emit("message", message);
-          break;
-        case "join_result":
-          this.emit("join", message.welcome_message);
-          break;
-        case "exclusive_kickoff":
-          this.emit("kick", message);
-          break;
-      }
     });
   }
 
-  public send(obj: unknown): this {
+  public send(obj: unknown): void {
     this.socket._send({
       "type": "data",
       "channel": this.channel,
       "channel_param": this.param,
       "data": obj
     });
-    return this;
   }
 
   public quit(): void {
-    this.socket._send({
+    this.socket.removeListener("message", this._onMessage)._send({
       "type": "disconnect_channel",
       "channel": this.channel,
       "channel_param": this.param,
@@ -104,31 +89,53 @@ export class Channel extends EventEmitter {
     });
     this.emit("quit");
   }
+
+  private _onMessage = (message: IncomingMessage) => {
+    if (message._channel !== this.channel || message._channel_param !== this.param)
+      return;
+    switch (message._ws_type) {
+      case "server_broadcast":
+        this.emit("message", message);
+        break;
+      case "join_result":
+        this.emit("join", message.welcome_message);
+        break;
+      case "exclusive_kickoff":
+        this.emit("kick", message);
+        break;
+    }
+  };
 }
 
 export class Socket extends EventEmitter {
-  public _ws!: WebSocket;
+  private _ws!: WebSocket;
 
-  public constructor(public readonly url = "wss://ws.luogu.com.cn/ws") {
+  public constructor(public readonly url: string) {
     super();
-    this.connect().on("message", message => void debugLog("↓ %o", message));
+    this.connect();
   }
 
-  public connect(): this {
+  public connect(): void {
     if ([WebSocket.CONNECTING, WebSocket.OPEN].includes(this._ws?.readyState))
       throw new Error("Socket is already open");
     this._ws = new WebSocket(this.url)
-      .on("message", data => this.emit("message", JSON.parse(String(data))))
-      .on("open", this.emit.bind(this, "open"))
+      .on("open", () => this.emit("open"))
+      .on("message", data => {
+        const message = JSON.parse(String(data)) as IncomingMessage;
+        debug("↓ %o", message);
+        this.emit("message", message);
+      })
       .on("close", (code, reason) => {
-        if (code > 1000 && code < 2000) {
-          debugLog("↺ (%d)", code, reason);
+        if (code <= 1000 || code >= 2000) {
+          debug("✗ (%d)", code, reason);
+          this.emit("close", code, reason);
+        } else {
+          debug("↺ (%d)", code, reason);
           this.emit("reconnect", code, reason);
           this.connect();
         }
       })
-      .on("error", this.emit.bind(this, "error"));
-    return this;
+      .on("error", () => this._ws.terminate());
   }
 
   public channel(channel: string, param = "", exclusiveKey = ""): Channel {
@@ -139,9 +146,8 @@ export class Socket extends EventEmitter {
     this._ws.close();
   }
 
-  public _send(message: OutgoingMessage): this {
+  public _send(message: OutgoingMessage): void {
+    debug("↑ %o", message);
     this._ws.send(JSON.stringify(message));
-    debugLog("↑ %o", message);
-    return this;
   }
 }

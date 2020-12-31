@@ -1,5 +1,7 @@
+import timeout = require("timeout-signal");
 import { once } from "events";
 import * as fs from "fs";
+import fetch, { RequestInfo, RequestInit } from "node-fetch";
 import { PNG } from "pngjs";
 import { Pixel } from ".";
 import ditherImage = require("dither-image");
@@ -25,6 +27,26 @@ export function findNextIndex<T>(arr: readonly T[], begin: number, predicate: (v
     if (predicate(arr[i], i, arr))
       return i;
   return -1;
+}
+
+export async function fetchTextWithTimeout(url: RequestInfo, ms: number, init?: RequestInit): Promise<string> {
+  const signal = timeout(ms);
+  try {
+    const res = await fetch(url, { ...init, signal });
+    return await res.text();
+  } finally {
+    timeout.clear(signal);
+  }
+}
+
+export async function fetchJsonWithTimeout(url: RequestInfo, ms: number, init?: RequestInit): Promise<unknown> {
+  const signal = timeout(ms);
+  try {
+    const res = await fetch(url, { ...init, signal });
+    return await res.json() as unknown;
+  } finally {
+    timeout.clear(signal);
+  }
 }
 
 export async function readImage(fileName: string, imageX: number, imageY: number, boardWidth: number, boardHeight: number, palette: Uint8Array): Promise<Pixel[]> {
