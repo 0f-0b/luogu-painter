@@ -132,7 +132,7 @@ export class Socket extends EventEmitter {
   public connect(): void {
     if (this._ws && [WebSocket.CONNECTING, WebSocket.OPEN].includes(this._ws.readyState))
       throw new Error("Socket is already open");
-    this._ws = new WebSocket(this.url)
+    this._ws = new WebSocket(this.url, { handshakeTimeout: 10000 })
       .on("open", () => {
         for (const ch of this._channels.values())
           ch._join();
