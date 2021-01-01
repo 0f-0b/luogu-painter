@@ -62,14 +62,22 @@ export type OutgoingMessage =
   | QuitChannelMessage;
 
 class Channel extends EventEmitter {
+  private _joinTimeout!: NodeJS.Timeout;
+
   public constructor(public readonly socket: Socket, public readonly channel: string, public readonly param: string, public readonly exclusiveKey = "") {
     super();
-    socket.on("message", this._onMessage)._send({
+    socket.on("message", this._onMessage);
+    this._join();
+  }
+
+  private _join() {
+    this.socket._send({
       "type": "join_channel",
-      "channel": channel,
-      "channel_param": param,
-      "exclusive_key": exclusiveKey
+      "channel": this.channel,
+      "channel_param": this.param,
+      "exclusive_key": this.exclusiveKey
     });
+    this._joinTimeout = setTimeout(() => this._join(), 1000);
   }
 
   public send(obj: unknown): void {
@@ -100,6 +108,7 @@ class Channel extends EventEmitter {
         break;
       case "join_result":
         this.emit("join", message.welcome_message);
+        clearTimeout(this._joinTimeout);
         break;
       case "exclusive_kickoff":
         this.emit("kick", message);
