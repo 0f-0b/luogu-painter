@@ -55,43 +55,38 @@ export interface Pixel {
 }
 
 export class PaintBoard extends EventEmitter {
+  private readonly _socket: Socket;
   private _width = 0;
   private _data = new Uint8Array;
 
   public constructor(public readonly endpoint: string, public readonly socketUrl: string) {
     super();
     const pending: Pixel[] = [];
-    const socket = new Socket(socketUrl);
-    socket
-      .on("open", () => socket.channel("paintboard")
-        .on("join", () => void retry(() => fetchTextWithTimeout(endpoint + "/board", 30000))
-          .then(text => {
-            const raw = text.trim().split("\n").map(line => Array.from(line, c => parseInt(c, 32)));
-            const width = this._width = raw.length;
-            const height = raw[0].length;
-            const data = this._data = new Uint8Array(width * height);
-            for (let y = 0; y < height; y++)
-              for (let x = 0; x < width; x++)
-                data[y * width + x] = raw[x][y];
-            for (const { x, y, color } of pending)
-              data[y * width + x] = color;
-            pending.length = 0;
-            debug("load", Date.now(), width, height, data.join(""));
-            this.emit("load", width, height, new Uint8Array(data));
-          })
-          .catch(error => this.emit("error", error)))
-        .on("message", ({ type, y, x, color }: { type: string; } & Pixel) => {
-          if (type !== "paintboard_update")
-            return;
-          if (!this._data) {
-            pending.push({ y, x, color });
-            return;
-          }
-          this._data[y * this._width + x] = color;
-          debug("update", Date.now(), y, x, color);
-          this.emit("update", y, x, color);
-        }))
-      .on("error", error => this.emit("error", error));
+    (this._socket = new Socket(socketUrl)).channel("paintboard")
+      .on("join", () => void retry(() => this._board()).then(({ width, height, data }) => {
+        for (const { x, y, color } of pending)
+          data[y * width + x] = color;
+        pending.length = 0;
+        debug("load", width, height, data.join(""));
+        this.emit("load", width, height, new Uint8Array(data));
+      }))
+      .on("message", ({ type, y, x, color }: { type: string; } & Pixel) => {
+        if (type !== "paintboard_update")
+          return;
+        if (!this._data) {
+          pending.push({ y, x, color });
+          return;
+        }
+        this._data[y * this._width + x] = color;
+        debug("update", y, x, color);
+        this.emit("update", y, x, color);
+      });
+  }
+
+  public close(): void {
+    this._socket.close();
+    this._width = 0;
+    this._data = new Uint8Array;
   }
 
   public get(y: number, x: number): number | undefined {
@@ -118,5 +113,17 @@ export class PaintBoard extends EventEmitter {
     });
     if (status >= 300)
       throw Object.assign(new Error(String(data)), { status });
+  }
+
+  private async _board(): Promise<{ width: number; height: number; data: Uint8Array; }> {
+    const text = await fetchTextWithTimeout(this.endpoint + "/board", 30000);
+    const raw = text.trim().split("\n").map(line => Array.from(line, c => parseInt(c, 32)));
+    const width = this._width = raw.length;
+    const height = raw[0].length;
+    const data = this._data = new Uint8Array(width * height);
+    for (let y = 0; y < height; y++)
+      for (let x = 0; x < width; x++)
+        data[y * width + x] = raw[x][y];
+    return { width, height, data };
   }
 }

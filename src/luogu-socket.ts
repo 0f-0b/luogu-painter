@@ -61,23 +61,15 @@ export type OutgoingMessage =
   | JoinChannelMessage
   | QuitChannelMessage;
 
+function channelKey(channel: string, param: string): string {
+  return JSON.stringify([channel, param]);
+}
+
 class Channel extends EventEmitter {
   private _joinTimeout!: NodeJS.Timeout;
 
-  public constructor(public readonly socket: Socket, public readonly channel: string, public readonly param: string, public readonly exclusiveKey = "") {
+  public constructor(public readonly socket: Socket, public readonly channel: string, public readonly param: string, public readonly exclusiveKey: string) {
     super();
-    socket.on("message", this._onMessage);
-    this._join();
-  }
-
-  private _join() {
-    this.socket._send({
-      "type": "join_channel",
-      "channel": this.channel,
-      "channel_param": this.param,
-      "exclusive_key": this.exclusiveKey
-    });
-    this._joinTimeout = setTimeout(() => this._join(), 1000);
   }
 
   public send(obj: unknown): void {
@@ -90,18 +82,28 @@ class Channel extends EventEmitter {
   }
 
   public quit(): void {
-    this.socket.removeListener("message", this._onMessage)._send({
+    this.socket._send({
       "type": "disconnect_channel",
       "channel": this.channel,
       "channel_param": this.param,
       "exclusive_key": this.exclusiveKey
     });
-    this.emit("quit");
+    this.socket._channels.delete(channelKey(this.channel, this.param));
   }
 
-  private _onMessage = (message: IncomingMessage) => {
-    if (message._channel !== this.channel || message._channel_param !== this.param)
+  public _join(): void {
+    if (!this.socket.isOpen)
       return;
+    this.socket._send({
+      "type": "join_channel",
+      "channel": this.channel,
+      "channel_param": this.param,
+      "exclusive_key": this.exclusiveKey
+    });
+    this._joinTimeout = setTimeout(() => this._join(), 1000);
+  }
+
+  public _onMessage(message: IncomingMessage): void {
     switch (message._ws_type) {
       case "server_broadcast":
         this.emit("message", message);
@@ -114,12 +116,13 @@ class Channel extends EventEmitter {
         this.emit("kick", message);
         break;
     }
-  };
+  }
 }
 
 export class Socket extends EventEmitter {
   private _ws!: WebSocket;
   private _pingTimeout!: NodeJS.Timeout;
+  public _channels = new Map<string, Channel>();
 
   public constructor(public readonly url: string) {
     super();
@@ -127,10 +130,12 @@ export class Socket extends EventEmitter {
   }
 
   public connect(): void {
-    if ([WebSocket.CONNECTING, WebSocket.OPEN].includes(this._ws?.readyState))
+    if (this._ws && [WebSocket.CONNECTING, WebSocket.OPEN].includes(this._ws.readyState))
       throw new Error("Socket is already open");
     this._ws = new WebSocket(this.url)
       .on("open", () => {
+        for (const ch of this._channels.values())
+          ch._join();
         this.emit("open");
         this._heartbeat();
       })
@@ -141,7 +146,7 @@ export class Socket extends EventEmitter {
       .on("message", data => {
         const message = JSON.parse(String(data)) as IncomingMessage;
         debug("↓ %o", message);
-        this.emit("message", message);
+        this._channels.get(channelKey(message._channel, message._channel_param))?._onMessage(message);
       })
       .on("close", (code, reason) => {
         clearTimeout(this._pingTimeout);
@@ -158,11 +163,21 @@ export class Socket extends EventEmitter {
   }
 
   public channel(channel: string, param = "", exclusiveKey = ""): Channel {
-    return new Channel(this, channel, param, exclusiveKey);
+    const key = channelKey(channel, param);
+    let ch = this._channels.get(key);
+    if (!ch) {
+      this._channels.set(key, ch = new Channel(this, channel, param, exclusiveKey));
+      ch._join();
+    }
+    return ch;
   }
 
   public close(): void {
     this._ws.close();
+  }
+
+  public get isOpen(): boolean {
+    return this._ws.readyState === WebSocket.OPEN;
   }
 
   public _send(message: OutgoingMessage): void {
