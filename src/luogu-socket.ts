@@ -7,7 +7,6 @@ const debug = debuglog("luogu-socket");
 interface BaseIncomingMessage {
   _channel: string;
   _channel_param: string;
-  client_number: number;
 }
 
 export interface IncomingDataMessage extends BaseIncomingMessage {
@@ -17,7 +16,8 @@ export interface IncomingDataMessage extends BaseIncomingMessage {
 
 export interface JoinResultMessage extends BaseIncomingMessage {
   _ws_type: "join_result";
-  welcome_message?: unknown;
+  client_number: number;
+  welcome_message: string;
 }
 
 export interface KickMessage extends BaseIncomingMessage {
@@ -27,6 +27,7 @@ export interface KickMessage extends BaseIncomingMessage {
 
 export interface HeartbeatMessage extends BaseIncomingMessage {
   _ws_type: "heartbeat";
+  client_number: number;
 }
 
 export type IncomingMessage =
@@ -109,6 +110,7 @@ class Channel extends EventEmitter {
 
 export class Socket extends EventEmitter {
   private _ws!: WebSocket;
+  private _pingTimeout!: NodeJS.Timeout;
 
   public constructor(public readonly url: string) {
     super();
@@ -119,13 +121,21 @@ export class Socket extends EventEmitter {
     if ([WebSocket.CONNECTING, WebSocket.OPEN].includes(this._ws?.readyState))
       throw new Error("Socket is already open");
     this._ws = new WebSocket(this.url)
-      .on("open", () => this.emit("open"))
+      .on("open", () => {
+        this.emit("open");
+        this._heartbeat();
+      })
+      .on("pong", () => {
+        clearTimeout(this._pingTimeout);
+        this._heartbeat();
+      })
       .on("message", data => {
         const message = JSON.parse(String(data)) as IncomingMessage;
         debug("↓ %o", message);
         this.emit("message", message);
       })
       .on("close", (code, reason) => {
+        clearTimeout(this._pingTimeout);
         if (code <= 1000 || code >= 2000) {
           debug("✗ (%d)", code, reason);
           this.emit("close", code, reason);
@@ -149,5 +159,12 @@ export class Socket extends EventEmitter {
   public _send(message: OutgoingMessage): void {
     debug("↑ %o", message);
     this._ws.send(JSON.stringify(message));
+  }
+
+  private _heartbeat(): void {
+    this._pingTimeout = setTimeout(() => {
+      this._ws.ping();
+      this._pingTimeout = setTimeout(() => this._ws.terminate(), 1000);
+    }, 10000);
   }
 }
