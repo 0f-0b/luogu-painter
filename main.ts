@@ -7,7 +7,7 @@ import {
 } from "https://deno.land/x/pngs@0.1.1/mod.ts";
 // @deno-types="https://cdn.esm.sh/v58/@types/yargs@17.0.7/index.d.ts"
 import yargs from "https://deno.land/x/yargs@v17.3.0-deno/deno.ts";
-import { LuoguPainter, palette } from "./mod.ts";
+import { defaultPalette, LuoguPainter } from "./mod.ts";
 import { readSessions } from "./session.ts";
 
 declare global {
@@ -144,7 +144,7 @@ painter.addEventListener("load", (event) => {
       data[y * width + x] = color;
     }
     const png = encodePNG(data, width, height, {
-      palette,
+      palette: defaultPalette,
       color: ColorType.Indexed,
     });
     Deno.writeFile(preview, png)

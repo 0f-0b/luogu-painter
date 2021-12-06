@@ -11,7 +11,7 @@ export type { Image, PaintBoardOptions, Pixel };
 export { PaintBoard, PaintBoardError };
 
 // deno-fmt-ignore
-export const palette = new Uint8Array([
+export const defaultPalette = new Uint8Array([
   // colorlist.map(color => "  " + Array.from(color.matchAll(/\d+/g), ([c]) => c + ",").join(" ")).join("\n")
   0, 0, 0,
   255, 255, 255,
@@ -46,34 +46,32 @@ export const palette = new Uint8Array([
   184, 63, 39,
   121, 85, 72,
 ]);
-const palettePoints: iq.utils.Point[] = [];
-for (let i = 0, len = palette.length; i < len; i += 3) {
-  palettePoints.push(iq.utils.Point.createByRGBA(
-    palette[i],
-    palette[i + 1],
-    palette[i + 2],
-    255,
-  ));
-}
 
-function getPixels({ width, height, data }: Image): Pixel[] {
+function dither({ width, height, data }: Image, palette: Uint8Array): Pixel[] {
   const quant = new iq.image.ErrorDiffusionArray(
     new iq.distance.CIEDE2000(),
     iq.image.ErrorDiffusionArrayKernel.FloydSteinberg,
   );
   const inpc = iq.utils.PointContainer.fromUint8Array(data, width, height);
   const pal = new iq.utils.Palette();
+  const palU32: number[] = [];
   pal.add(iq.utils.Point.createByRGBA(0, 0, 0, 0));
-  for (const point of palettePoints) {
+  for (let i = 0, len = palette.length; i < len; i += 3) {
+    const point = iq.utils.Point.createByRGBA(
+      palette[i],
+      palette[i + 1],
+      palette[i + 2],
+      255,
+    );
     pal.add(point);
+    palU32.push(point.uint32);
   }
   const outpc = quant.quantizeSync(inpc, pal);
-  const colors: number[] = outpc.getPointArray()
-    .map((a) => palettePoints.findIndex((b) => a.uint32 === b.uint32));
+  const points = outpc.getPointArray();
   const pixels: Pixel[] = [];
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      const color = colors[y * width + x];
+      const color = palU32.indexOf(points[y * width + x].uint32);
       if (color !== -1) {
         pixels.push({ x, y, color });
       }
@@ -119,6 +117,7 @@ export interface LuoguPainter extends EventTarget {
 
 export interface LuoguPainterOptions extends PaintBoardOptions {
   image: ImageWithOffset;
+  palette?: Uint8Array;
   sessions?: ArrayConvertible<Session>;
   randomize?: boolean;
   cooldown?: number;
@@ -133,6 +132,7 @@ export class LuoguPainter extends EventTarget {
 
   constructor({
     image,
+    palette = defaultPalette,
     sessions,
     randomize = false,
     cooldown = 30000,
@@ -140,7 +140,7 @@ export class LuoguPainter extends EventTarget {
     socket,
   }: LuoguPainterOptions) {
     super();
-    const pixels = getPixels(image);
+    const pixels = dither(image, palette);
     for (const pixel of pixels) {
       pixel.x += image.x;
       pixel.y += image.y;
