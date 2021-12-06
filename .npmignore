@@ -1,8 +1,0 @@
-/src/
-/test/
-/lib/test
-tsconfig.json
-.eslintrc.json
-.editorconfig
-*.png
-*.csv
