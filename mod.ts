@@ -67,7 +67,7 @@ export interface ImageWithOffset extends Image {
 }
 
 interface LuoguPainterEventMap {
-  load: CustomEvent<Image>;
+  load: CustomEvent<{ board: Image; total: number }>;
   update: CustomEvent<{ remaining: number }>;
   paint: CustomEvent<{ session: Session; pixel: Pixel }>;
   error: CustomEvent<{ session: Session; error: unknown }>;
@@ -186,7 +186,8 @@ export class LuoguPainter extends EventTarget {
       }
     };
     board.addEventListener("load", (event) => {
-      const { width, height } = event.detail;
+      const board = event.detail;
+      const { width, height } = board;
       relevantPixels = this.#pixels.filter((pixel) =>
         pixel.x >= 0 && pixel.x < width &&
         pixel.y >= 0 && pixel.y < height
@@ -194,7 +195,11 @@ export class LuoguPainter extends EventTarget {
       if (this.#randomize) {
         shuffle(relevantPixels);
       }
-      this.dispatchEvent(new CustomEvent("load", event));
+      this.dispatchEvent(
+        new CustomEvent("load", {
+          detail: { board, total: relevantPixels.length },
+        }),
+      );
       update();
       paint();
     });

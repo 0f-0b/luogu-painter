@@ -128,8 +128,9 @@ const painter = new LuoguPainter({
   socket,
 });
 painter.addEventListener("load", (event) => {
-  const { width, height } = event.detail;
+  const { board: { width, height }, total } = event.detail;
   console.log(`Board loaded (${width}x${height})`);
+  console.log(`${total} ${total === 1 ? "pixel" : "pixels"} in total`);
 });
 painter.addEventListener("update", (event) => {
   const { remaining } = event.detail;
