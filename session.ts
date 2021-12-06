@@ -1,5 +1,5 @@
 import { parse as parseCSV } from "https://deno.land/std@0.117.0/encoding/csv.ts";
-import type { BufReader } from "https://deno.land/std@0.117.0/io/buffer.ts";
+import { BufReader } from "https://deno.land/std@0.117.0/io/buffer.ts";
 
 export interface Session {
   uid: number;
@@ -37,4 +37,13 @@ export function parseSessions(input: string | BufReader): Promise<Session[]> {
       },
     ],
   }) as Promise<Session[]>;
+}
+
+export async function readSessions(path: string | URL): Promise<Session[]> {
+  const file = await Deno.open(path);
+  try {
+    return await parseSessions(new BufReader(file));
+  } finally {
+    file.close();
+  }
 }

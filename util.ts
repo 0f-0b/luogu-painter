@@ -1,4 +1,3 @@
-export type Awaitable<T> = T | PromiseLike<T>;
 export type ArrayConvertible<T> = Iterable<T> | ArrayLike<T>;
 export type EventListener<T, E extends Event> =
   | ((this: T, event: E) => void | Promise<void>)

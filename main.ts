@@ -1,5 +1,4 @@
 import { joinToString } from "https://deno.land/std@0.117.0/collections/join_to_string.ts";
-import { BufReader } from "https://deno.land/std@0.117.0/io/buffer.ts";
 import {
   BitDepth,
   ColorType,
@@ -7,9 +6,8 @@ import {
 } from "https://deno.land/x/pngs@0.1.1/mod.ts";
 // @deno-types="https://cdn.esm.sh/v58/@types/yargs@17.0.7/index.d.ts"
 import yargs from "https://deno.land/x/yargs@v17.3.0-deno/deno.ts";
-import { withFile } from "./io.ts";
 import { LuoguPainter } from "./mod.ts";
-import { parseSessions } from "./session.ts";
+import { readSessions } from "./session.ts";
 
 declare global {
   interface NumberConstructor {
@@ -105,9 +103,9 @@ const { width, height, data } = await Deno.readFile(pngFile).then((data) => {
 });
 const sessions = sessionsFile === undefined
   ? []
-  : await withFile(sessionsFile, (file) => parseSessions(new BufReader(file)));
+  : await readSessions(sessionsFile);
 if (sessions.length === 0) {
-  console.log("No sessions given; starting in watch mode");
+  console.log("No sessions; starting in watch mode");
 } else {
   console.log(
     `Using ${sessions.length} ${
