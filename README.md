@@ -6,7 +6,7 @@ efficiently.
 ## Installation
 
 1. [Install Deno](https://deno.land/#installation)
-2. `deno install https://cdn.jsdelivr.net/gh/sjx233/luogu-painter@main/main.ts`
+2. `deno install --allow-read --allow-net https://cdn.jsdelivr.net/gh/sjx233/luogu-painter@main/main.ts`
 
 ## Sample sessions file
 
