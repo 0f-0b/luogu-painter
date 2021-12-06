@@ -131,12 +131,11 @@ class LuoguSocketChannel extends EventTarget {
   close(): void {
     this.dispatchEvent(new Event("close"));
     clearTimeout(this.#timeout);
-    const socket = this.socket;
-    socket.removeEventListener("message", this.#message);
-    socket.removeEventListener("close", this.#close);
-    socket.removeEventListener("error", this.#error);
+    this.socket.removeEventListener("message", this.#message);
+    this.socket.removeEventListener("close", this.#close);
+    this.socket.removeEventListener("error", this.#error);
     try {
-      socket.send({
+      this.socket.send({
         "type": "disconnect_channel",
         "channel": this.channel,
         "channel_param": this.param,
@@ -175,7 +174,7 @@ class LuoguSocketChannel extends EventTarget {
 
   #error = () => {
     this.dispatchEvent(new Event("error"));
-    this.#close();
+    this.close();
   };
 }
 
@@ -214,12 +213,12 @@ export class LuoguSocket extends EventTarget {
 
   constructor(url = "wss://ws.luogu.com.cn/ws") {
     super();
-    const ws = this.#ws = new WebSocket(url);
-    ws.addEventListener(
+    this.#ws = new WebSocket(url);
+    this.#ws.addEventListener(
       "open",
       (event) => this.dispatchEvent(new Event("open", event)),
     );
-    ws.addEventListener("message", (event) => {
+    this.#ws.addEventListener("message", (event) => {
       let message: IncomingMessage;
       try {
         message = JSON.parse(event.data);
@@ -228,11 +227,11 @@ export class LuoguSocket extends EventTarget {
       }
       this.dispatchEvent(new MessageEvent("message", { data: message }));
     });
-    ws.addEventListener(
+    this.#ws.addEventListener(
       "close",
       (event) => this.dispatchEvent(new CloseEvent("close", event)),
     );
-    ws.addEventListener(
+    this.#ws.addEventListener(
       "error",
       (event) => this.dispatchEvent(new Event("error", event)),
     );

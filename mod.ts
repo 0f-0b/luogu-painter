@@ -1,11 +1,18 @@
-import { LuoguSocket } from "./luogu-socket.ts";
-import { Session } from "./session.ts";
-import type { EventListener } from "./util.ts";
-import { retry, timeout } from "./util.ts";
+import { delay } from "https://deno.land/std@0.117.0/async/delay.ts";
+import ditherImage from "https://esm.sh/dither-image@0.2.0";
+import type { Image, PaintBoardOptions, Pixel } from "./paint-board.ts";
+import { PaintBoard, PaintBoardError } from "./paint-board.ts";
+import type { Session } from "./session.ts";
+import { ArrayConvertible, count, EventListener } from "./util.ts";
+import { findNextIndex, shuffle } from "./util.ts";
+
+export { parseSessions } from "./session.ts";
+export type { Image, PaintBoardOptions, Pixel };
+export { PaintBoard, PaintBoardError };
 
 // deno-fmt-ignore
 export const palette = new Uint8Array([
-  // colorlist.flatMap(color => Array.from(color.matchAll(/\d+/g), c => parseInt(c, 10)))
+  // colorlist.map(color => "  " + Array.from(color.matchAll(/\d+/g), ([c]) => c + ",").join(" ")).join("\n")
   0, 0, 0,
   255, 255, 255,
   170, 170, 170,
@@ -37,165 +44,166 @@ export const palette = new Uint8Array([
   255, 152, 0,
   255, 87, 34,
   184, 63, 39,
-  121, 85, 72
+  121, 85, 72,
 ]);
 
-export interface Pixel {
+function getPixels({ width, height, data }: Image): Pixel[] {
+  const colors = ditherImage(width, height, data, palette);
+  const pixels: Pixel[] = [];
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const index = y * width + x;
+      if (data[index * 4 + 3] >= 0x80) {
+        pixels.push({ x, y, color: colors[index] });
+      }
+    }
+  }
+  return pixels;
+}
+
+export interface ImageWithOffset extends Image {
   x: number;
   y: number;
-  color: number;
 }
 
-export interface Image {
-  width: number;
-  height: number;
-  data: Uint8Array;
-}
-
-interface PaintBoardEventMap {
+interface LuoguPainterEventMap {
   load: CustomEvent<Image>;
-  update: CustomEvent<Pixel>;
+  update: CustomEvent<{ remaining: number }>;
+  paint: CustomEvent<{ session: Session; pixel: Pixel }>;
+  error: CustomEvent<{ session: Session; error: unknown }>;
 }
 
-export interface PaintBoard extends EventTarget {
-  addEventListener<K extends keyof PaintBoardEventMap>(
+export interface LuoguPainter extends EventTarget {
+  addEventListener<K extends keyof LuoguPainterEventMap>(
     type: K,
-    listener: EventListener<PaintBoard, PaintBoardEventMap[K]>,
+    listener: EventListener<LuoguPainter, LuoguPainterEventMap[K]>,
     options?: boolean | AddEventListenerOptions,
   ): void;
   addEventListener(
     type: string,
-    listener: EventListener<PaintBoard, Event>,
+    listener: EventListener<LuoguPainter, Event>,
     options?: boolean | AddEventListenerOptions,
   ): void;
-  removeEventListener<K extends keyof PaintBoardEventMap>(
+  removeEventListener<K extends keyof LuoguPainterEventMap>(
     type: K,
-    listener: EventListener<PaintBoard, PaintBoardEventMap[K]>,
+    listener: EventListener<LuoguPainter, LuoguPainterEventMap[K]>,
     options?: boolean | EventListenerOptions,
   ): void;
   removeEventListener(
     type: string,
-    listener: EventListener<PaintBoard, Event>,
+    listener: EventListener<LuoguPainter, Event>,
     options?: boolean | EventListenerOptions,
   ): void;
 }
 
-export class PaintBoard extends EventTarget {
-  readonly endpoint: string;
-  readonly socket: string | undefined;
-  #width = 0;
-  #data = new Uint8Array();
+export interface LuoguPainterOptions extends PaintBoardOptions {
+  image: ImageWithOffset;
+  sessions?: ArrayConvertible<Session>;
+  randomize?: boolean;
+  cooldown?: number;
+}
 
-  constructor(
-    endpoint = "https://www.luogu.com.cn/paintBoard",
-    socket?: string,
-  ) {
+export class LuoguPainter extends EventTarget {
+  readonly #pixels: readonly Pixel[];
+  readonly #sessions: readonly Session[];
+  readonly #randomize: boolean;
+  readonly #cooldown: number;
+  #lastCount?: number;
+
+  constructor({
+    image,
+    sessions,
+    randomize = false,
+    cooldown = 30000,
+    endpoint,
+    socket,
+  }: LuoguPainterOptions) {
     super();
-    this.endpoint = endpoint;
-    this.socket = socket;
-    this.#connect();
+    const pixels = getPixels(image);
+    for (const pixel of pixels) {
+      pixel.x += image.x;
+      pixel.y += image.y;
+    }
+    this.#pixels = pixels;
+    this.#sessions = sessions
+      ? Array.from(sessions, ({ uid, clientId }) => ({ uid, clientId }))
+      : [];
+    this.#randomize = randomize;
+    this.#cooldown = cooldown;
+    this.#connect({ endpoint, socket });
   }
 
-  #connect(): void {
-    const pending: Pixel[] = [];
-    const board = new URL(this.endpoint + "/board");
-    const socket = new LuoguSocket(this.socket);
-    socket.addEventListener("open", () => {
-      const channel = socket.channel("paintboard");
-      channel.addEventListener("open", async () => {
-        const { width, height, data } = await retry(async () => {
-          const text = await timeout(30000, async (signal) => {
-            const res = await fetch(board, { signal });
-            return await res.text();
-          });
-          const raw = text.trim().split("\n");
-          const width = this.#width = raw.length;
-          const height = raw[0].length;
-          const data = this.#data = new Uint8Array(width * height);
-          for (let y = 0; y < height; y++) {
-            for (let x = 0; x < width; x++) {
-              data[y * width + x] = parseInt(raw[x][y], 32);
-            }
-          }
-          return { width, height, data };
-        });
-        for (const { x, y, color } of pending) {
-          data[y * width + x] = color;
-        }
-        pending.length = 0;
-        this.dispatchEvent(
-          new CustomEvent("load", {
-            detail: { width, height, data: new Uint8Array(data) },
-          }),
-        );
-      });
-      channel.addEventListener("message", (event) => {
-        const message = event.data;
-        if (message._ws_type !== "server_broadcast") {
-          return;
-        }
-        const { type, x, y, color } = message as unknown as {
-          type: string;
-          x: number;
-          y: number;
-          color: number;
-        };
-        if (type !== "paintboard_update") {
-          return;
-        }
-        if (!this.#data) {
-          pending.push({ x, y, color });
-          return;
-        }
-        this.#data[y * this.#width + x] = color;
+  #connect(options: PaintBoardOptions): void {
+    const sessions = this.#sessions;
+    let board: PaintBoard | null = new PaintBoard(options);
+    let relevantPixels: Pixel[];
+    const needPaint = ({ x, y, color }: Pixel) =>
+      board && board.get(x, y) !== color;
+    const update = () => {
+      const curCount = count(relevantPixels, needPaint);
+      if (curCount !== this.#lastCount) {
+        this.#lastCount = curCount;
         this.dispatchEvent(
           new CustomEvent("update", {
-            detail: { x, y, color },
+            detail: { remaining: curCount },
           }),
         );
-      });
-      channel.addEventListener("close", () => socket.close());
-    });
-    socket.addEventListener("close", () => this.#connect());
-  }
-
-  get(x: number, y: number): number | undefined {
-    return this.#data[y * this.#width + x];
-  }
-
-  async set(
-    x: number,
-    y: number,
-    color: number,
-    session: Session,
-  ): Promise<void> {
-    const { status, data } = await retry(async () => {
-      const { status, data } = await timeout<{
-        status: number;
-        data: unknown;
-      }>(30000, async (signal) => {
-        const res = await fetch(this.endpoint + "/paint", {
-          headers: [
-            ["content-type", "application/x-www-form-urlencoded"],
-            ["cookie", `_uid=${session.uid}; __client_id=${session.clientId}`],
-          ],
-          body: new URLSearchParams({
-            x: String(x),
-            y: String(y),
-            color: String(color),
-          }),
-          method: "POST",
-          signal,
-        });
-        return await res.json();
-      });
-      if (status === 408 || status >= 500) {
-        throw Object.assign(new Error(String(data)), { status });
       }
-      return { status, data };
+    };
+    const paint = async () => {
+      if (sessions.length === 0) {
+        return;
+      }
+      const cooldown = Math.ceil(this.#cooldown / sessions.length);
+      let sessionIndex = 0;
+      let cur = 0;
+      while (board) {
+        const session = sessions[sessionIndex++];
+        if (sessionIndex === sessions.length) {
+          sessionIndex = 0;
+        }
+        const next = findNextIndex(relevantPixels, cur, needPaint);
+        cur = next + 1;
+        if (next !== -1) {
+          const pixel = relevantPixels[next];
+          await board.set(pixel.x, pixel.y, pixel.color, session)
+            .then(
+              () =>
+                this.dispatchEvent(
+                  new CustomEvent("paint", {
+                    detail: { session, pixel },
+                  }),
+                ),
+              (error: unknown) =>
+                this.dispatchEvent(
+                  new CustomEvent("error", {
+                    detail: { session, error },
+                  }),
+                ),
+            );
+        }
+        await delay(cooldown);
+      }
+    };
+    board.addEventListener("load", (event) => {
+      const { width, height } = event.detail;
+      relevantPixels = this.#pixels.filter((pixel) =>
+        pixel.x >= 0 && pixel.x < width &&
+        pixel.y >= 0 && pixel.y < height
+      );
+      if (this.#randomize) {
+        shuffle(relevantPixels);
+      }
+      this.dispatchEvent(new CustomEvent("load", event));
+      update();
+      paint();
     });
-    if (status >= 300) {
-      throw Object.assign(new Error(String(data)), { status });
-    }
+    board.addEventListener("update", () => {
+      update();
+    });
+    board.addEventListener("close", () => {
+      board = null;
+      this.#connect(options);
+    });
   }
 }
