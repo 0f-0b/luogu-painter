@@ -1,5 +1,5 @@
 import { delay } from "https://deno.land/std@0.117.0/async/delay.ts";
-import ditherImage from "https://esm.sh/dither-image@0.2.0";
+import * as iq from "https://esm.sh/image-q@3.0.4";
 import type { Image, PaintBoardOptions, Pixel } from "./paint-board.ts";
 import { PaintBoard, PaintBoardError } from "./paint-board.ts";
 import type { Session } from "./session.ts";
@@ -46,15 +46,36 @@ export const palette = new Uint8Array([
   184, 63, 39,
   121, 85, 72,
 ]);
+const palettePoints: iq.utils.Point[] = [];
+for (let i = 0, len = palette.length; i < len; i += 3) {
+  palettePoints.push(iq.utils.Point.createByRGBA(
+    palette[i],
+    palette[i + 1],
+    palette[i + 2],
+    255,
+  ));
+}
 
 function getPixels({ width, height, data }: Image): Pixel[] {
-  const colors = ditherImage(width, height, data, palette);
+  const quant = new iq.image.ErrorDiffusionArray(
+    new iq.distance.CIEDE2000(),
+    iq.image.ErrorDiffusionArrayKernel.FloydSteinberg,
+  );
+  const inpc = iq.utils.PointContainer.fromUint8Array(data, width, height);
+  const pal = new iq.utils.Palette();
+  pal.add(iq.utils.Point.createByRGBA(0, 0, 0, 0));
+  for (const point of palettePoints) {
+    pal.add(point);
+  }
+  const outpc = quant.quantizeSync(inpc, pal);
+  const colors: number[] = outpc.getPointArray()
+    .map((a) => palettePoints.findIndex((b) => a.uint32 === b.uint32));
   const pixels: Pixel[] = [];
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      const index = y * width + x;
-      if (data[index * 4 + 3] >= 0x80) {
-        pixels.push({ x, y, color: colors[index] });
+      const color = colors[y * width + x];
+      if (color !== -1) {
+        pixels.push({ x, y, color });
       }
     }
   }
@@ -67,7 +88,7 @@ export interface ImageWithOffset extends Image {
 }
 
 interface LuoguPainterEventMap {
-  load: CustomEvent<{ board: Image; total: number }>;
+  load: CustomEvent<{ board: Image; pixels: Pixel[] }>;
   update: CustomEvent<{ remaining: number }>;
   paint: CustomEvent<{ session: Session; pixel: Pixel }>;
   error: CustomEvent<{ session: Session; error: unknown }>;
@@ -197,7 +218,10 @@ export class LuoguPainter extends EventTarget {
       }
       this.dispatchEvent(
         new CustomEvent("load", {
-          detail: { board, total: relevantPixels.length },
+          detail: {
+            board,
+            pixels: relevantPixels.map(({ x, y, color }) => ({ x, y, color })),
+          },
         }),
       );
       update();

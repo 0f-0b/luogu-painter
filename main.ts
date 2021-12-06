@@ -3,10 +3,11 @@ import {
   BitDepth,
   ColorType,
   decode as decodePNG,
+  encode as encodePNG,
 } from "https://deno.land/x/pngs@0.1.1/mod.ts";
 // @deno-types="https://cdn.esm.sh/v58/@types/yargs@17.0.7/index.d.ts"
 import yargs from "https://deno.land/x/yargs@v17.3.0-deno/deno.ts";
-import { LuoguPainter } from "./mod.ts";
+import { LuoguPainter, palette } from "./mod.ts";
 import { readSessions } from "./session.ts";
 
 declare global {
@@ -16,16 +17,17 @@ declare global {
 }
 
 const {
-  "png-file": pngFile,
+  "png": pngFile,
   "x": x,
   "y": y,
   "sessions": sessionsFile,
   "randomize": randomize,
   "cooldown": cooldown,
+  "preview": preview,
   "endpoint": endpoint,
   "socket": socket,
 } = yargs(Deno.args)
-  .usage("Usage: luogu-painter [options] <png-file> <x> <y>")
+  .usage("Usage: luogu-painter [options] <png> <x> <y>")
   .version(false)
   .option("sessions", {
     alias: "s",
@@ -42,6 +44,11 @@ const {
     description: "milliseconds to wait after drawing each pixel",
     type: "number",
   })
+  .option("preview", {
+    alias: "p",
+    description: "file to store a preview to",
+    type: "string",
+  })
   .option("endpoint", {
     description: "url to the paint board",
     type: "string",
@@ -57,9 +64,9 @@ const {
     description: "show this help message",
     type: "boolean",
   })
-  .command("$0 <png-file> <x> <y>", false, (yargs) =>
+  .command("$0 <png> <x> <y>", false, (yargs) =>
     yargs
-      .positional("png-file", {
+      .positional("png", {
         description: "image to draw",
         type: "string",
         normalize: true,
@@ -128,9 +135,21 @@ const painter = new LuoguPainter({
   socket,
 });
 painter.addEventListener("load", (event) => {
-  const { board: { width, height }, total } = event.detail;
+  const { board: { width, height, data }, pixels } = event.detail;
   console.log(`Board loaded (${width}x${height})`);
+  const total = pixels.length;
   console.log(`${total} ${total === 1 ? "pixel" : "pixels"} in total`);
+  if (preview !== undefined) {
+    for (const { x, y, color } of pixels) {
+      data[y * width + x] = color;
+    }
+    const png = encodePNG(data, width, height, {
+      palette,
+      color: ColorType.Indexed,
+    });
+    Deno.writeFile(preview, png)
+      .catch((e: unknown) => console.error("Failed to save preview:", e));
+  }
 });
 painter.addEventListener("update", (event) => {
   const { remaining } = event.detail;
