@@ -90,7 +90,7 @@ const {
   .strict()
   .parseSync();
 if (typeof pngFile !== "string") {
-  throw new TypeError("png-file is not a string.");
+  throw new TypeError("png is not a string.");
 }
 if (!Number.isInteger(x)) {
   throw new TypeError("x is not an integer.");
