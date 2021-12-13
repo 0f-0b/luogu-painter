@@ -1,4 +1,3 @@
-import { joinToString } from "https://deno.land/std@0.117.0/collections/join_to_string.ts";
 import {
   BitDepth,
   ColorType,
@@ -7,8 +6,13 @@ import {
 } from "https://deno.land/x/pngs@0.1.1/mod.ts";
 // @deno-types="https://cdn.esm.sh/v58/@types/yargs@17.0.7/index.d.ts"
 import yargs from "https://deno.land/x/yargs@v17.3.0-deno/deno.ts";
-import { defaultPalette, LuoguPainter } from "./mod.ts";
-import { readSessions } from "./session.ts";
+import {
+  defaultPalette,
+  LuoguPainter,
+  PaintBoardError,
+  parseTokens,
+} from "./mod.ts";
+import { pluralize } from "./util.ts";
 
 declare global {
   interface NumberConstructor {
@@ -20,7 +24,7 @@ const {
   "png": pngFile,
   "x": x,
   "y": y,
-  "sessions": sessionsFile,
+  "tokens": tokensFile,
   "randomize": randomize,
   "cooldown": cooldown,
   "preview": preview,
@@ -29,9 +33,9 @@ const {
 } = yargs(Deno.args)
   .usage("Usage: luogu-painter [options] <png> <x> <y>")
   .version(false)
-  .option("sessions", {
+  .option("tokens", {
     alias: "s",
-    description: "file to read sessions from",
+    description: "file to read tokens from",
     type: "string",
   })
   .option("randomize", {
@@ -108,27 +112,17 @@ const { width, height, data } = await Deno.readFile(pngFile).then((data) => {
   }
   return { width, height, data: image };
 });
-const sessions = sessionsFile === undefined
+const tokens = tokensFile === undefined
   ? []
-  : await readSessions(sessionsFile);
-if (sessions.length === 0) {
-  console.log("No sessions; starting in watch mode");
+  : parseTokens(await Deno.readTextFile(tokensFile));
+if (tokens.length === 0) {
+  console.log("No tokens; starting in watch mode");
 } else {
-  console.log(
-    `Using ${sessions.length} ${
-      sessions.length === 1 ? "session" : "sessions"
-    }: ${
-      joinToString(
-        sessions,
-        (session) => String(session.uid),
-        { separator: ", " },
-      )
-    }`,
-  );
+  console.log(`Using ${pluralize(tokens.length, "token", "tokens")}`);
 }
 const painter = new LuoguPainter({
   image: { x, y, width, height, data },
-  sessions,
+  tokens,
   randomize,
   cooldown,
   endpoint,
@@ -138,7 +132,7 @@ painter.addEventListener("load", (event) => {
   const { board: { width, height, data }, pixels } = event.detail;
   console.log(`Board loaded (${width}x${height})`);
   const total = pixels.length;
-  console.log(`${total} ${total === 1 ? "pixel" : "pixels"} in total`);
+  console.log(`${pluralize(total, "pixel", "pixels")} in total`);
   if (preview !== undefined) {
     for (const { x, y, color } of pixels) {
       data[y * width + x] = color;
@@ -153,13 +147,17 @@ painter.addEventListener("load", (event) => {
 });
 painter.addEventListener("update", (event) => {
   const { remaining } = event.detail;
-  console.log(`${remaining} ${remaining === 1 ? "pixel" : "pixels"} remaining`);
+  console.log(`${pluralize(remaining, "pixel", "pixels")} remaining`);
 });
 painter.addEventListener("paint", (event) => {
-  const { session, pixel: { x, y, color } } = event.detail;
-  console.log(session.uid, `(${x}, ${y}) ← ${color}`);
+  const { x, y, color } = event.detail;
+  console.log(`(${x}, ${y}) ← ${color}`);
 });
 painter.addEventListener("error", (event) => {
-  const { session, error } = event.detail;
-  console.log(session.uid, String(error));
+  const error = event.detail;
+  if (error instanceof PaintBoardError) {
+    console.error(`${error.token}: ${error.message}`);
+  } else {
+    console.error("Error drawing pixel:", error);
+  }
 });

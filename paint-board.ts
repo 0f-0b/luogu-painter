@@ -1,5 +1,4 @@
 import { LuoguSocket } from "./luogu-socket.ts";
-import { Session } from "./session.ts";
 import type { EventListener } from "./util.ts";
 
 export interface Pixel {
@@ -49,6 +48,10 @@ export interface PaintBoardOptions {
   socket?: string;
 }
 
+export interface SetPixelOptions {
+  token: string;
+}
+
 export class PaintBoard extends EventTarget {
   #width = 0;
   #data?: Uint8Array;
@@ -56,7 +59,7 @@ export class PaintBoard extends EventTarget {
   #socket: LuoguSocket;
 
   constructor({
-    endpoint = "https://www.luogu.com.cn/paintBoard",
+    endpoint = "https://www.luogu.com.cn/paintboard",
     socket,
   }: PaintBoardOptions = {}) {
     super();
@@ -131,23 +134,23 @@ export class PaintBoard extends EventTarget {
     x: number,
     y: number,
     color: number,
-    session: Session,
+    { token }: SetPixelOptions,
   ): Promise<void> {
     const res = await fetch(this.#paintURL, {
       headers: [
         ["content-type", "application/x-www-form-urlencoded"],
-        ["cookie", `_uid=${session.uid}; __client_id=${session.clientId}`],
       ],
       body: new URLSearchParams({
         x: String(x),
         y: String(y),
         color: String(color),
+        token,
       }),
       method: "POST",
     });
     const { status, data }: { status: number; data: string } = await res.json();
     if (status >= 300) {
-      throw new PaintBoardError(data, status);
+      throw new PaintBoardError(data, status, token);
     }
   }
 
@@ -164,10 +167,12 @@ export class PaintBoard extends EventTarget {
 
 export class PaintBoardError extends Error {
   code: number;
+  token: string;
 
-  constructor(message: string, code: number) {
+  constructor(message: string, code: number, token: string) {
     super(message);
     this.name = "PaintBoardError";
     this.code = code;
+    this.token = token;
   }
 }

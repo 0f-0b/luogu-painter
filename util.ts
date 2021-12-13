@@ -3,6 +3,10 @@ export type EventListener<T, E extends Event> =
   | ((this: T, event: E) => void | Promise<void>)
   | { handleEvent(event: E): void | Promise<void> };
 
+export function pluralize(n: number, singular: string, plural: string): string {
+  return `${n} ${n === 1 ? singular : plural}`;
+}
+
 export function count<T>(it: Iterable<T>, pred: (value: T) => unknown): number {
   let count = 0;
   for (const elem of it) {

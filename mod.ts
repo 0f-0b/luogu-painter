@@ -2,11 +2,9 @@ import { delay } from "https://deno.land/std@0.117.0/async/delay.ts";
 import * as iq from "https://esm.sh/image-q@3.0.4";
 import type { Image, PaintBoardOptions, Pixel } from "./paint-board.ts";
 import { PaintBoard, PaintBoardError } from "./paint-board.ts";
-import type { Session } from "./session.ts";
 import { ArrayConvertible, count, EventListener } from "./util.ts";
 import { findNextIndex, shuffle } from "./util.ts";
 
-export { parseSessions } from "./session.ts";
 export type { Image, PaintBoardOptions, Pixel };
 export { PaintBoard, PaintBoardError };
 
@@ -88,8 +86,8 @@ export interface ImageWithOffset extends Image {
 interface LuoguPainterEventMap {
   load: CustomEvent<{ board: Image; pixels: Pixel[] }>;
   update: CustomEvent<{ remaining: number }>;
-  paint: CustomEvent<{ session: Session; pixel: Pixel }>;
-  error: CustomEvent<{ session: Session; error: unknown }>;
+  paint: CustomEvent<Pixel>;
+  error: CustomEvent;
 }
 
 export interface LuoguPainter extends EventTarget {
@@ -118,14 +116,14 @@ export interface LuoguPainter extends EventTarget {
 export interface LuoguPainterOptions extends PaintBoardOptions {
   image: ImageWithOffset;
   palette?: Uint8Array;
-  sessions?: ArrayConvertible<Session>;
+  tokens?: ArrayConvertible<string>;
   randomize?: boolean;
   cooldown?: number;
 }
 
 export class LuoguPainter extends EventTarget {
   readonly #pixels: readonly Pixel[];
-  readonly #sessions: readonly Session[];
+  readonly #tokens: readonly string[];
   readonly #randomize: boolean;
   readonly #cooldown: number;
   #lastCount?: number;
@@ -133,7 +131,7 @@ export class LuoguPainter extends EventTarget {
   constructor({
     image,
     palette = defaultPalette,
-    sessions,
+    tokens,
     randomize = false,
     cooldown = 30000,
     endpoint,
@@ -145,17 +143,14 @@ export class LuoguPainter extends EventTarget {
       pixel.x += image.x;
       pixel.y += image.y;
     }
-    this.#pixels = pixels;
-    this.#sessions = sessions
-      ? Array.from(sessions, ({ uid, clientId }) => ({ uid, clientId }))
-      : [];
+    this.#pixels = pixels.filter((pixel) => pixel.x >= 0 && pixel.y >= 0);
+    this.#tokens = tokens ? Array.from(tokens) : [];
     this.#randomize = randomize;
     this.#cooldown = cooldown;
     this.#connect({ endpoint, socket });
   }
 
   #connect(options: PaintBoardOptions): void {
-    const sessions = this.#sessions;
     let board: PaintBoard | null = new PaintBoard(options);
     let relevantPixels: Pixel[];
     const needPaint = ({ x, y, color }: Pixel) =>
@@ -173,27 +168,26 @@ export class LuoguPainter extends EventTarget {
     };
     const paint = () => {
       let cur = 0;
-      sessions.map(async (session) => {
+      this.#tokens.map(async (token) => {
         while (board) {
           const next = findNextIndex(relevantPixels, cur, needPaint);
           cur = next + 1;
           if (next !== -1) {
             const pixel = relevantPixels[next];
-            await board.set(pixel.x, pixel.y, pixel.color, session)
-              .then(
-                () =>
-                  this.dispatchEvent(
-                    new CustomEvent("paint", {
-                      detail: { session, pixel },
-                    }),
-                  ),
-                (error: unknown) =>
-                  this.dispatchEvent(
-                    new CustomEvent("error", {
-                      detail: { session, error },
-                    }),
-                  ),
+            try {
+              await board.set(pixel.x, pixel.y, pixel.color, { token });
+              this.dispatchEvent(
+                new CustomEvent("paint", {
+                  detail: pixel,
+                }),
               );
+            } catch (e: unknown) {
+              this.dispatchEvent(
+                new CustomEvent("error", {
+                  detail: e,
+                }),
+              );
+            }
           }
           await delay(this.#cooldown);
         }
@@ -202,10 +196,8 @@ export class LuoguPainter extends EventTarget {
     board.addEventListener("load", (event) => {
       const board = event.detail;
       const { width, height } = board;
-      relevantPixels = this.#pixels.filter((pixel) =>
-        pixel.x >= 0 && pixel.x < width &&
-        pixel.y >= 0 && pixel.y < height
-      );
+      relevantPixels = this.#pixels
+        .filter((pixel) => pixel.x < width && pixel.y < height);
       if (this.#randomize) {
         shuffle(relevantPixels);
       }
@@ -228,4 +220,19 @@ export class LuoguPainter extends EventTarget {
       this.#connect(options);
     });
   }
+}
+
+export function parseTokens(text: string): string[] {
+  const tokens = new Set<string>();
+  for (let line of text.split("\n")) {
+    line = line.trim();
+    if (line.length === 0 || line.startsWith("#")) {
+      continue;
+    }
+    if (tokens.has(line)) {
+      throw new TypeError(`Duplicate token '${line}'`);
+    }
+    tokens.add(line);
+  }
+  return Array.from(tokens);
 }
