@@ -171,40 +171,33 @@ export class LuoguPainter extends EventTarget {
         );
       }
     };
-    const paint = async () => {
-      if (sessions.length === 0) {
-        return;
-      }
-      const cooldown = Math.ceil(this.#cooldown / sessions.length);
-      let sessionIndex = 0;
+    const paint = () => {
       let cur = 0;
-      while (board) {
-        const session = sessions[sessionIndex++];
-        if (sessionIndex === sessions.length) {
-          sessionIndex = 0;
+      sessions.map(async (session) => {
+        while (board) {
+          const next = findNextIndex(relevantPixels, cur, needPaint);
+          cur = next + 1;
+          if (next !== -1) {
+            const pixel = relevantPixels[next];
+            await board.set(pixel.x, pixel.y, pixel.color, session)
+              .then(
+                () =>
+                  this.dispatchEvent(
+                    new CustomEvent("paint", {
+                      detail: { session, pixel },
+                    }),
+                  ),
+                (error: unknown) =>
+                  this.dispatchEvent(
+                    new CustomEvent("error", {
+                      detail: { session, error },
+                    }),
+                  ),
+              );
+          }
+          await delay(this.#cooldown);
         }
-        const next = findNextIndex(relevantPixels, cur, needPaint);
-        cur = next + 1;
-        if (next !== -1) {
-          const pixel = relevantPixels[next];
-          await board.set(pixel.x, pixel.y, pixel.color, session)
-            .then(
-              () =>
-                this.dispatchEvent(
-                  new CustomEvent("paint", {
-                    detail: { session, pixel },
-                  }),
-                ),
-              (error: unknown) =>
-                this.dispatchEvent(
-                  new CustomEvent("error", {
-                    detail: { session, error },
-                  }),
-                ),
-            );
-        }
-        await delay(cooldown);
-      }
+      });
     };
     board.addEventListener("load", (event) => {
       const board = event.detail;
