@@ -84,8 +84,8 @@ export interface ImageWithOffset extends Image {
 }
 
 interface LuoguPainterEventMap {
-  load: CustomEvent<{ board: Image; pixels: Pixel[] }>;
-  update: CustomEvent<{ remaining: number }>;
+  load: CustomEvent<{ board: Image; pixels: Pixel[]; remaining: number }>;
+  update: CustomEvent<{ pixel: Pixel; remaining: number }>;
   paint: CustomEvent<Pixel>;
   error: CustomEvent;
 }
@@ -155,17 +155,6 @@ export class LuoguPainter extends EventTarget {
     let relevantPixels: Pixel[];
     const needPaint = ({ x, y, color }: Pixel) =>
       board && board.get(x, y) !== color;
-    const update = () => {
-      const curCount = count(relevantPixels, needPaint);
-      if (curCount !== this.#lastCount) {
-        this.#lastCount = curCount;
-        this.dispatchEvent(
-          new CustomEvent("update", {
-            detail: { remaining: curCount },
-          }),
-        );
-      }
-    };
     const paint = () => {
       let cur = 0;
       this.#tokens.map(async (token) => {
@@ -206,14 +195,22 @@ export class LuoguPainter extends EventTarget {
           detail: {
             board,
             pixels: relevantPixels.map(({ x, y, color }) => ({ x, y, color })),
+            remaining: count(relevantPixels, needPaint),
           },
         }),
       );
-      update();
       paint();
     });
-    board.addEventListener("update", () => {
-      update();
+    board.addEventListener("update", (event) => {
+      const pixel = event.detail;
+      this.dispatchEvent(
+        new CustomEvent("update", {
+          detail: {
+            pixel,
+            remaining: count(relevantPixels, needPaint),
+          },
+        }),
+      );
     });
     board.addEventListener("close", () => {
       board = null;

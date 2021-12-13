@@ -1,4 +1,5 @@
 export type ArrayConvertible<T> = Iterable<T> | ArrayLike<T>;
+export type Awaitable<T> = T | PromiseLike<T>;
 export type EventListener<T, E extends Event> =
   | ((this: T, event: E) => void | Promise<void>)
   | { handleEvent(event: E): void | Promise<void> };
@@ -43,4 +44,31 @@ export function findNextIndex<T>(
     }
   }
   return -1;
+}
+
+export function throttleAsync<T, P extends unknown[], R>(
+  delay: number,
+  fn: (this: T, ...args: P) => Awaitable<R>,
+): (this: T, ...args: P) => Promise<R> {
+  let id: number | undefined;
+  let lastTime = -Infinity;
+  let lastResult: R;
+  return async function (this: T, ...args: P): Promise<R> {
+    const run = async () => {
+      lastTime = Infinity;
+      try {
+        lastResult = await fn.apply(this, args);
+      } finally {
+        lastTime = performance.now();
+      }
+    };
+    clearTimeout(id);
+    const remaining = lastTime + delay - performance.now();
+    if (remaining <= 0) {
+      await run();
+    } else {
+      id = setTimeout(run, remaining);
+    }
+    return lastResult;
+  };
 }

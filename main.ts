@@ -6,13 +6,14 @@ import {
 } from "https://deno.land/x/pngs@0.1.1/mod.ts";
 // @deno-types="https://cdn.esm.sh/v58/@types/yargs@17.0.7/index.d.ts"
 import yargs from "https://deno.land/x/yargs@v17.3.0-deno/deno.ts";
+import type { Image, Pixel } from "./mod.ts";
 import {
   defaultPalette,
   LuoguPainter,
   PaintBoardError,
   parseTokens,
 } from "./mod.ts";
-import { pluralize } from "./util.ts";
+import { pluralize, throttleAsync } from "./util.ts";
 
 declare global {
   interface NumberConstructor {
@@ -128,26 +129,54 @@ const painter = new LuoguPainter({
   endpoint,
   socket,
 });
-painter.addEventListener("load", (event) => {
-  const { board: { width, height, data }, pixels } = event.detail;
-  console.log(`Board loaded (${width}x${height})`);
-  const total = pixels.length;
-  console.log(`${pluralize(total, "pixel", "pixels")} in total`);
-  if (preview !== undefined) {
-    for (const { x, y, color } of pixels) {
-      data[y * width + x] = color;
+let boardCache: Image;
+let pixelsCache: Pixel[];
+
+const savePreview = throttleAsync(60000, async (path: string) => {
+  console.log("Saving preview");
+  try {
+    const { data, width, height } = boardCache;
+    const previewData = new Uint8Array(data);
+    for (const { x, y, color } of pixelsCache) {
+      previewData[y * width + x] = color;
     }
-    const png = encodePNG(data, width, height, {
-      palette: defaultPalette,
-      color: ColorType.Indexed,
-    });
-    Deno.writeFile(preview, png)
-      .catch((e: unknown) => console.error("Failed to save preview:", e));
+    await Deno.writeFile(
+      path,
+      encodePNG(previewData, width, height, {
+        palette: defaultPalette,
+        color: ColorType.Indexed,
+      }),
+    );
+  } catch (e: unknown) {
+    console.error("Failed to save preview:", e);
   }
 });
+
+let lastCount = -1;
+
+function update(count: number): void {
+  if (count !== lastCount) {
+    lastCount = count;
+    console.log(`${pluralize(count, "pixel", "pixels")} remaining`);
+  }
+  if (preview !== undefined) {
+    savePreview(preview);
+  }
+}
+
+painter.addEventListener("load", (event) => {
+  const { board, pixels, remaining } = event.detail;
+  boardCache = board;
+  pixelsCache = pixels;
+  console.log(`Board loaded (${board.width}x${board.height})`);
+  console.log(`${pluralize(pixels.length, "pixel", "pixels")} in total`);
+  update(remaining);
+});
 painter.addEventListener("update", (event) => {
-  const { remaining } = event.detail;
-  console.log(`${pluralize(remaining, "pixel", "pixels")} remaining`);
+  const { pixel: { x, y, color }, remaining } = event.detail;
+  const { data, width } = boardCache;
+  data[y * width + x] = color;
+  update(remaining);
 });
 painter.addEventListener("paint", (event) => {
   const { x, y, color } = event.detail;
