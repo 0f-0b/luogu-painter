@@ -2,8 +2,8 @@ import { delay } from "https://deno.land/std@0.117.0/async/delay.ts";
 import * as iq from "https://esm.sh/image-q@3.0.4";
 import type { Image, PaintBoardOptions, Pixel } from "./paint-board.ts";
 import { PaintBoard, PaintBoardError } from "./paint-board.ts";
-import { ArrayConvertible, count, EventListener } from "./util.ts";
-import { findNextIndex, shuffle } from "./util.ts";
+import type { ArrayConvertible, EventListener } from "./util.ts";
+import { count, findNextIndex, shuffle } from "./util.ts";
 
 export type { Image, PaintBoardOptions, Pixel };
 export { PaintBoard, PaintBoardError };
