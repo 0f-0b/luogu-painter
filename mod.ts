@@ -1,4 +1,7 @@
-import { delay } from "https://deno.land/std@0.117.0/async/delay.ts";
+/// <reference no-default-lib="true" />
+/// <reference lib="deno.ns" />
+/// <reference lib="dom" />
+import { delay } from "https://deno.land/std@0.118.0/async/delay.ts";
 import * as iq from "https://esm.sh/image-q@3.0.4";
 import type { Image, PaintBoardOptions, Pixel } from "./paint-board.ts";
 import { PaintBoard, PaintBoardError } from "./paint-board.ts";

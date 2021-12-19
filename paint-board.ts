@@ -71,7 +71,7 @@ export class PaintBoard extends EventTarget {
       const channel = this.#socket.channel("paintboard");
       channel.addEventListener("open", async () => {
         try {
-          const res = await fetch(boardURL);
+          const res = await fetch(boardURL.href);
           const text = await res.text();
           const raw = text.trim().split("\n");
           const width = this.#width = raw.length;
@@ -136,7 +136,7 @@ export class PaintBoard extends EventTarget {
     color: number,
     { token }: SetPixelOptions,
   ): Promise<void> {
-    const res = await fetch(this.#paintURL, {
+    const res = await fetch(this.#paintURL.href, {
       headers: [
         ["content-type", "application/x-www-form-urlencoded"],
       ],
