@@ -1,8 +1,8 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
 /// <reference lib="dom" />
-import { delay } from "https://deno.land/std@0.118.0/async/delay.ts";
-import * as iq from "https://esm.sh/image-q@3.0.4";
+import { delay } from "https://deno.land/std@0.119.0/async/delay.ts";
+import * as iq from "https://esm.sh/image-q@3.0.5?pin=v58";
 import type { Image, PaintBoardOptions, Pixel } from "./paint-board.ts";
 import { PaintBoard, PaintBoardError } from "./paint-board.ts";
 import type { ArrayConvertible, EventListener } from "./util.ts";
@@ -129,7 +129,6 @@ export class LuoguPainter extends EventTarget {
   readonly #tokens: readonly string[];
   readonly #randomize: boolean;
   readonly #cooldown: number;
-  #lastCount?: number;
 
   constructor({
     image,
@@ -137,7 +136,8 @@ export class LuoguPainter extends EventTarget {
     tokens,
     randomize = false,
     cooldown = 30000,
-    endpoint,
+    boardURL,
+    paintURL,
     socket,
   }: LuoguPainterOptions) {
     super();
@@ -150,7 +150,7 @@ export class LuoguPainter extends EventTarget {
     this.#tokens = tokens ? Array.from(tokens) : [];
     this.#randomize = randomize;
     this.#cooldown = cooldown;
-    this.#connect({ endpoint, socket });
+    this.#connect({ boardURL, paintURL, socket });
   }
 
   #connect(options: PaintBoardOptions): void {

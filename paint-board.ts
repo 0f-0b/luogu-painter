@@ -44,7 +44,8 @@ export interface PaintBoard extends EventTarget {
 }
 
 export interface PaintBoardOptions {
-  endpoint?: string;
+  boardURL?: string;
+  paintURL?: string;
   socket?: string;
 }
 
@@ -55,23 +56,24 @@ export interface SetPixelOptions {
 export class PaintBoard extends EventTarget {
   #width = 0;
   #data?: Uint8Array;
-  #paintURL: URL;
+  #paintURL: string;
   #socket: LuoguSocket;
 
-  constructor({
-    endpoint = "https://www.luogu.com.cn/paintboard",
-    socket,
-  }: PaintBoardOptions = {}) {
+  constructor(options: PaintBoardOptions = {}) {
     super();
+    const boardURL = new URL(
+      options.boardURL ?? "https://www.luogu.com.cn/paintboard/board",
+    ).toString();
+    this.#paintURL = new URL(
+      options.paintURL ?? "https://www.luogu.com.cn/paintboard/paint",
+    ).toString();
     const pending: Pixel[] = [];
-    const boardURL = new URL(endpoint + "/board");
-    this.#paintURL = new URL(endpoint + "/paint");
-    this.#socket = new LuoguSocket(socket);
+    this.#socket = new LuoguSocket(options.socket);
     this.#socket.addEventListener("open", () => {
       const channel = this.#socket.channel("paintboard");
       channel.addEventListener("open", async () => {
         try {
-          const res = await fetch(boardURL.href);
+          const res = await fetch(boardURL);
           const text = await res.text();
           const raw = text.trim().split("\n");
           const width = this.#width = raw.length;
@@ -92,6 +94,7 @@ export class PaintBoard extends EventTarget {
             }),
           );
         } catch {
+          this.#socket.close();
           this.#error();
         }
       });
@@ -120,7 +123,6 @@ export class PaintBoard extends EventTarget {
           }),
         );
       });
-      this.#socket.removeEventListener("error", this.#error);
       channel.addEventListener("error", this.#error);
     });
     this.#socket.addEventListener("error", this.#error);
@@ -136,7 +138,7 @@ export class PaintBoard extends EventTarget {
     color: number,
     { token }: SetPixelOptions,
   ): Promise<void> {
-    const res = await fetch(this.#paintURL.href, {
+    const res = await fetch(this.#paintURL, {
       headers: [
         ["content-type", "application/x-www-form-urlencoded"],
       ],

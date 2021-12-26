@@ -4,8 +4,8 @@ import {
   decode as decodePNG,
   encode as encodePNG,
 } from "https://deno.land/x/pngs@0.1.1/mod.ts";
-// @deno-types="https://cdn.esm.sh/v58/@types/yargs@17.0.7/index.d.ts"
-import yargs from "https://deno.land/x/yargs@v17.3.0-deno/deno.ts";
+// @deno-types="https://cdn.esm.sh/v58/@types/yargs@17.0.8/index.d.ts"
+import yargs from "https://deno.land/x/yargs@v17.3.1-deno/deno.ts";
 import type { Image, Pixel } from "./mod.ts";
 import {
   defaultPalette,
@@ -29,7 +29,8 @@ const {
   "randomize": randomize,
   "cooldown": cooldown,
   "preview": preview,
-  "endpoint": endpoint,
+  "board-url": boardURL,
+  "paint-url": paintURL,
   "socket": socket,
 } = yargs(Deno.args)
   .usage("Usage: luogu-painter [options] <png> <x> <y>")
@@ -54,13 +55,15 @@ const {
     description: "file to store a preview to",
     type: "string",
   })
-  .option("endpoint", {
-    description: "url to the paint board",
+  .option("board-url", {
+    type: "string",
+    hidden: true,
+  })
+  .option("paint-url", {
     type: "string",
     hidden: true,
   })
   .option("socket", {
-    description: "url to the websocket",
     type: "string",
     hidden: true,
   })
@@ -126,7 +129,8 @@ const painter = new LuoguPainter({
   tokens,
   randomize,
   cooldown,
-  endpoint,
+  boardURL,
+  paintURL,
   socket,
 });
 let boardCache: Image;
