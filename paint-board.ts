@@ -138,18 +138,20 @@ export class PaintBoard extends EventTarget {
     color: number,
     { token }: SetPixelOptions,
   ): Promise<void> {
-    const res = await fetch(this.#paintURL, {
-      headers: [
-        ["content-type", "application/x-www-form-urlencoded"],
-      ],
-      body: new URLSearchParams({
-        x: String(x),
-        y: String(y),
-        color: String(color),
-        token,
-      }),
-      method: "POST",
-    });
+    const res = await fetch(
+      `${this.#paintURL}?token=${encodeURIComponent(token)}`,
+      {
+        headers: [
+          ["content-type", "application/x-www-form-urlencoded"],
+        ],
+        body: new URLSearchParams({
+          x: String(x),
+          y: String(y),
+          color: String(color),
+        }),
+        method: "POST",
+      },
+    );
     const { status, data }: { status: number; data: string } = await res.json();
     if (status >= 300) {
       throw new PaintBoardError(data, status, token);
