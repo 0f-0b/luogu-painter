@@ -66,7 +66,7 @@ export function throttleAsync<T, P extends unknown[], R>(
     const remaining = lastTime + delay - performance.now();
     if (remaining <= 0) {
       await run();
-    } else {
+    } else if (Number.isFinite(remaining)) {
       id = setTimeout(run, remaining);
     }
     return lastResult;
