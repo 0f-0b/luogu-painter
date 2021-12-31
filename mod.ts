@@ -218,7 +218,7 @@ export class LuoguPainter extends EventTarget {
     board.addEventListener("close", () => {
       board = null;
       this.#connect(options);
-    });
+    }, { once: true });
   }
 }
 
