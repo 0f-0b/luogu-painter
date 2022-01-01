@@ -1,30 +1,30 @@
 import type { EventListener } from "./util.ts";
 
 interface BaseIncomingMessage {
-  "_channel": string;
-  "_channel_param": string;
-  "_ws_type": string;
+  _channel: string;
+  _channel_param: string;
+  _ws_type: string;
 }
 
 interface ServerBroadcastMessage extends BaseIncomingMessage {
-  "_ws_type": "server_broadcast";
+  _ws_type: "server_broadcast";
   [key: string]: unknown;
 }
 
 interface JoinResultMessage extends BaseIncomingMessage {
-  "_ws_type": "join_result";
-  "client_number": number;
-  "welcome_message": string;
+  _ws_type: "join_result";
+  client_number: number;
+  welcome_message: string;
 }
 
 interface ExclusiveKickoffMessage extends BaseIncomingMessage {
-  "_ws_type": "exclusive_kickoff";
+  _ws_type: "exclusive_kickoff";
   [key: string]: unknown;
 }
 
 interface HeartbeatMessage extends BaseIncomingMessage {
-  "_ws_type": "heartbeat";
-  "client_number": number;
+  _ws_type: "heartbeat";
+  client_number: number;
 }
 
 type IncomingMessage =
@@ -34,24 +34,24 @@ type IncomingMessage =
   | HeartbeatMessage;
 
 interface BaseOutgoingMessage {
-  "channel": string;
-  "channel_param": string;
-  "type": string;
+  channel: string;
+  channel_param: string;
+  type: string;
 }
 
 interface DataMessage extends BaseOutgoingMessage {
-  "type": "data";
-  "data": unknown;
+  type: "data";
+  data: unknown;
 }
 
 interface JoinChannelMessage extends BaseOutgoingMessage {
-  "type": "join_channel";
-  "exclusive_key": string;
+  type: "join_channel";
+  exclusive_key: string;
 }
 
 interface DisconnectChannelMessage extends BaseOutgoingMessage {
-  "type": "disconnect_channel";
-  "exclusive_key": string;
+  type: "disconnect_channel";
+  exclusive_key: string;
 }
 
 type OutgoingMessage =
@@ -108,10 +108,10 @@ class LuoguSocketChannel extends EventTarget {
     this.param = param;
     this.exclusiveKey = exclusiveKey;
     socket.send({
-      "type": "join_channel",
-      "channel": this.channel,
-      "channel_param": this.param,
-      "exclusive_key": this.exclusiveKey,
+      type: "join_channel",
+      channel: this.channel,
+      channel_param: this.param,
+      exclusive_key: this.exclusiveKey,
     });
     socket.addEventListener("message", this.#message);
     socket.addEventListener("close", this.#close);
@@ -121,10 +121,10 @@ class LuoguSocketChannel extends EventTarget {
 
   send(obj: unknown): void {
     this.socket.send({
-      "type": "data",
-      "channel": this.channel,
-      "channel_param": this.param,
-      "data": obj,
+      type: "data",
+      channel: this.channel,
+      channel_param: this.param,
+      data: obj,
     });
   }
 
@@ -136,10 +136,10 @@ class LuoguSocketChannel extends EventTarget {
     this.socket.removeEventListener("error", this.#error);
     try {
       this.socket.send({
-        "type": "disconnect_channel",
-        "channel": this.channel,
-        "channel_param": this.param,
-        "exclusive_key": this.exclusiveKey,
+        type: "disconnect_channel",
+        channel: this.channel,
+        channel_param: this.param,
+        exclusive_key: this.exclusiveKey,
       });
     } catch {
       // ignored
