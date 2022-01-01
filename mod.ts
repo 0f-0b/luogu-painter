@@ -1,12 +1,13 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
 /// <reference lib="dom" />
+import { deferred } from "https://deno.land/std@0.119.0/async/deferred.ts";
 import { delay } from "https://deno.land/std@0.119.0/async/delay.ts";
-import * as iq from "https://esm.sh/image-q@3.0.5?pin=v58";
+import * as iq from "https://esm.sh/image-q@3.0.5?pin=v59";
 import type { Image, PaintBoardOptions, Pixel } from "./paint-board.ts";
 import { PaintBoard, PaintBoardError } from "./paint-board.ts";
-import type { ArrayConvertible, EventListener } from "./util.ts";
-import { count, findNextIndex, shuffle } from "./util.ts";
+import type { EventListener } from "./util.ts";
+import { shuffle } from "./util.ts";
 
 export type { Image, PaintBoardOptions, Pixel };
 export { PaintBoard, PaintBoardError };
@@ -119,106 +120,140 @@ export interface LuoguPainter extends EventTarget {
 export interface LuoguPainterOptions extends PaintBoardOptions {
   image: ImageWithOffset;
   palette?: Uint8Array;
-  tokens?: ArrayConvertible<string>;
+  tokens?: Iterable<string>;
   randomize?: boolean;
   cooldown?: number;
 }
 
 export class LuoguPainter extends EventTarget {
-  readonly #pixels: readonly Pixel[];
-  readonly #tokens: readonly string[];
+  readonly #pixels = new Map<`${number},${number}`, Pixel>();
   readonly #randomize: boolean;
   readonly #cooldown: number;
+  readonly #pending = new Set<Pixel>();
+  #lock = deferred();
+  #board!: PaintBoard;
 
   constructor({
     image,
     palette = defaultPalette,
     tokens,
     randomize = false,
-    cooldown = 30000,
+    cooldown = 31000,
     boardURL,
     paintURL,
     socket,
   }: LuoguPainterOptions) {
     super();
-    const pixels = dither(image, palette);
-    for (const pixel of pixels) {
+    const pixels = this.#pixels;
+    for (const pixel of dither(image, palette)) {
       pixel.x += image.x;
       pixel.y += image.y;
+      if (pixel.x >= 0 && pixel.y >= 0) {
+        pixels.set(`${pixel.x},${pixel.y}`, pixel);
+      }
     }
-    this.#pixels = pixels.filter((pixel) => pixel.x >= 0 && pixel.y >= 0);
-    this.#tokens = tokens ? Array.from(tokens) : [];
     this.#randomize = randomize;
     this.#cooldown = cooldown;
     this.#connect({ boardURL, paintURL, socket });
+    if (tokens) {
+      for (const token of tokens) {
+        this.#paint(token);
+      }
+    }
   }
 
   #connect(options: PaintBoardOptions): void {
-    let board: PaintBoard | null = new PaintBoard(options);
-    let relevantPixels: Pixel[];
-    const needPaint = ({ x, y, color }: Pixel) =>
-      board && board.get(x, y) !== color;
-    const paint = () => {
-      let cur = 0;
-      this.#tokens.map(async (token) => {
-        while (board) {
-          const next = findNextIndex(relevantPixels, cur, needPaint);
-          cur = next + 1;
-          if (next !== -1) {
-            const pixel = relevantPixels[next];
-            try {
-              await board.set(pixel.x, pixel.y, pixel.color, { token });
-              this.dispatchEvent(
-                new CustomEvent("paint", {
-                  detail: pixel,
-                }),
-              );
-            } catch (e: unknown) {
-              this.dispatchEvent(
-                new CustomEvent("error", {
-                  detail: e,
-                }),
-              );
-            }
-          }
-          await delay(this.#cooldown);
-        }
-      });
-    };
+    const board = this.#board = new PaintBoard(options);
     board.addEventListener("load", (event) => {
-      const board = event.detail;
-      const { width, height } = board;
-      relevantPixels = this.#pixels
-        .filter((pixel) => pixel.x < width && pixel.y < height);
-      if (this.#randomize) {
-        shuffle(relevantPixels);
+      const data = event.detail;
+      const { width, height } = data;
+      const relevant: Pixel[] = [];
+      for (const pixel of this.#pixels.values()) {
+        if (pixel.x < width && pixel.y < height) {
+          relevant.push(pixel);
+        }
       }
+      if (this.#randomize) {
+        shuffle(relevant);
+      }
+      const pending = this.#pending;
+      pending.clear();
+      for (const pixel of relevant) {
+        if (board.get(pixel.x, pixel.y) !== pixel.color) {
+          pending.add(pixel);
+        }
+      }
+      this.#notify();
       this.dispatchEvent(
         new CustomEvent("load", {
           detail: {
-            board,
-            pixels: relevantPixels.map(({ x, y, color }) => ({ x, y, color })),
-            remaining: count(relevantPixels, needPaint),
+            board: data,
+            pixels: relevant.map(({ x, y, color }) => ({ x, y, color })),
+            remaining: pending.size,
           },
         }),
       );
-      paint();
     });
     board.addEventListener("update", (event) => {
-      const pixel = event.detail;
+      const data = event.detail;
+      const pixel = this.#pixels.get(`${data.x},${data.y}`);
+      const pending = this.#pending;
+      if (pixel) {
+        if (data.color === pixel.color) {
+          pending.delete(pixel);
+        } else {
+          pending.add(pixel);
+        }
+        this.#notify();
+      }
       this.dispatchEvent(
         new CustomEvent("update", {
           detail: {
-            pixel,
-            remaining: count(relevantPixels, needPaint),
+            pixel: data,
+            remaining: pending.size,
           },
         }),
       );
     });
-    board.addEventListener("close", () => {
-      board = null;
-      this.#connect(options);
-    }, { once: true });
+    board.addEventListener("close", () => this.#connect(options), {
+      once: true,
+    });
+  }
+
+  async #paint(token: string): Promise<never> {
+    for (;;) {
+      await this.#lock;
+      const [pixel] = this.#pending;
+      if (!this.#pending.delete(pixel)) {
+        continue;
+      }
+      this.#pending.add(pixel);
+      try {
+        await this.#board.set(pixel.x, pixel.y, pixel.color, { token });
+        this.dispatchEvent(
+          new CustomEvent("paint", {
+            detail: pixel,
+          }),
+        );
+      } catch (e: unknown) {
+        this.dispatchEvent(
+          new CustomEvent("error", {
+            detail: e,
+          }),
+        );
+      }
+      await delay(this.#cooldown);
+    }
+  }
+
+  #notify(): void {
+    if (this.#pending.size === 0) {
+      if (this.#lock.state !== "pending") {
+        this.#lock = deferred();
+      }
+    } else {
+      this.#lock.resolve();
+    }
   }
 }
 

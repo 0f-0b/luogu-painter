@@ -55,18 +55,20 @@ export interface SetPixelOptions {
 
 export class PaintBoard extends EventTarget {
   #width = 0;
-  #data?: Uint8Array;
-  #paintURL: string;
-  #socket: LuoguSocket;
+  #height = 0;
+  #data = new Uint8Array();
+  #ready = false;
+  readonly #paintURL: string;
+  readonly #socket: LuoguSocket;
 
   constructor(options: PaintBoardOptions = {}) {
     super();
-    const boardURL = new URL(
-      options.boardURL ?? "https://www.luogu.com.cn/paintboard/board",
-    ).toString();
-    this.#paintURL = new URL(
-      options.paintURL ?? "https://www.luogu.com.cn/paintboard/paint",
-    ).toString();
+    const boardURL =
+      new URL(options.boardURL ?? "https://www.luogu.com.cn/paintboard/board")
+        .href;
+    this.#paintURL =
+      new URL(options.paintURL ?? "https://www.luogu.com.cn/paintboard/paint")
+        .href;
     const pending: Pixel[] = [];
     this.#socket = new LuoguSocket(options.socket);
     this.#socket.addEventListener("open", () => {
@@ -77,7 +79,7 @@ export class PaintBoard extends EventTarget {
           const text = await res.text();
           const raw = text.trim().split("\n");
           const width = this.#width = raw.length;
-          const height = raw[0].length;
+          const height = this.#height = raw[0].length;
           const data = this.#data = new Uint8Array(width * height);
           for (let y = 0; y < height; y++) {
             for (let x = 0; x < width; x++) {
@@ -88,6 +90,7 @@ export class PaintBoard extends EventTarget {
             data[y * width + x] = color;
           }
           pending.length = 0;
+          this.#ready = true;
           this.dispatchEvent(
             new CustomEvent("load", {
               detail: { width, height, data: new Uint8Array(data) },
@@ -112,7 +115,7 @@ export class PaintBoard extends EventTarget {
         if (type !== "paintboard_update") {
           return;
         }
-        if (!this.#data) {
+        if (!this.#ready) {
           pending.push({ x, y, color });
           return;
         }
@@ -129,7 +132,9 @@ export class PaintBoard extends EventTarget {
   }
 
   get(x: number, y: number): number | undefined {
-    return this.#data?.[y * this.#width + x];
+    return x < 0 || x >= this.#width || y < 0 || y >= this.#height
+      ? undefined
+      : this.#data[y * this.#width + x];
   }
 
   async set(
@@ -138,20 +143,19 @@ export class PaintBoard extends EventTarget {
     color: number,
     { token }: SetPixelOptions,
   ): Promise<void> {
-    const res = await fetch(
-      `${this.#paintURL}?token=${encodeURIComponent(token)}`,
-      {
-        headers: [
-          ["content-type", "application/x-www-form-urlencoded"],
-        ],
-        body: new URLSearchParams({
-          x: String(x),
-          y: String(y),
-          color: String(color),
-        }),
-        method: "POST",
-      },
-    );
+    const url = new URL(this.#paintURL);
+    url.searchParams.append("token", token);
+    const res = await fetch(url.href, {
+      headers: [
+        ["content-type", "application/x-www-form-urlencoded"],
+      ],
+      body: new URLSearchParams({
+        x: String(x),
+        y: String(y),
+        color: String(color),
+      }),
+      method: "POST",
+    });
     const { status, data }: { status: number; data: string } = await res.json();
     if (status >= 300) {
       throw new PaintBoardError(data, status, token);
