@@ -144,13 +144,13 @@ const savePreview = throttleAsync(60000, async (path: string) => {
     for (const { x, y, color } of pixelsCache) {
       previewData[y * width + x] = color;
     }
-    await Deno.writeFile(
-      path,
-      encodePNG(previewData, width, height, {
-        palette: defaultPalette,
-        color: ColorType.Indexed,
-      }),
-    );
+    const png = encodePNG(previewData, width, height, {
+      palette: defaultPalette,
+      color: ColorType.Indexed,
+    });
+    const tempPath = await Deno.makeTempFile();
+    await Deno.writeFile(tempPath, png);
+    await Deno.rename(tempPath, path);
   } catch (e: unknown) {
     console.error("Failed to save preview:", e);
   }
