@@ -191,6 +191,6 @@ painter.addEventListener("error", (event) => {
   if (error instanceof PaintBoardError) {
     console.error(`${error.token}: ${error.message}`);
   } else {
-    console.error("Error drawing pixel:", error);
+    console.error("Network error:", error);
   }
 });
