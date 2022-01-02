@@ -4,50 +4,18 @@
 import { deferred } from "https://deno.land/std@0.119.0/async/deferred.ts";
 import { delay } from "https://deno.land/std@0.119.0/async/delay.ts";
 import * as iq from "https://esm.sh/image-q@3.0.5?pin=v59";
-import type { Image, PaintBoardOptions, Pixel } from "./paint-board.ts";
+import {
+  Image,
+  PaintBoardOptions,
+  palette as defaultPalette,
+  Pixel,
+} from "./paint-board.ts";
 import { PaintBoard, PaintBoardError } from "./paint-board.ts";
 import type { EventListener } from "./util.ts";
 import { shuffle } from "./util.ts";
 
 export type { Image, PaintBoardOptions, Pixel };
-export { PaintBoard, PaintBoardError };
-
-// deno-fmt-ignore
-export const defaultPalette = new Uint8Array([
-  // colorlist.map(color => "  " + Array.from(color.matchAll(/\d+/g), ([c]) => c + ",").join(" ")).join("\n")
-  0, 0, 0,
-  255, 255, 255,
-  170, 170, 170,
-  85, 85, 85,
-  254, 211, 199,
-  255, 196, 206,
-  250, 172, 142,
-  255, 139, 131,
-  244, 67, 54,
-  233, 30, 99,
-  226, 102, 158,
-  156, 39, 176,
-  103, 58, 183,
-  63, 81, 181,
-  0, 70, 112,
-  5, 113, 151,
-  33, 150, 243,
-  0, 188, 212,
-  59, 229, 219,
-  151, 253, 220,
-  22, 115, 0,
-  55, 169, 60,
-  137, 230, 66,
-  215, 255, 7,
-  255, 246, 209,
-  248, 203, 140,
-  255, 235, 59,
-  255, 193, 7,
-  255, 152, 0,
-  255, 87, 34,
-  184, 63, 39,
-  121, 85, 72,
-]);
+export { defaultPalette, PaintBoard, PaintBoardError };
 
 function dither({ width, height, data }: Image, palette: Uint8Array): Pixel[] {
   const quant = new iq.image.ErrorDiffusionArray(
