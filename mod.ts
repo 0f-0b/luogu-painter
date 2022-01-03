@@ -91,12 +91,14 @@ export interface LuoguPainterOptions extends PaintBoardOptions {
   tokens?: Iterable<string>;
   randomize?: boolean;
   cooldown?: number;
+  reloadInterval?: number;
 }
 
 export class LuoguPainter extends EventTarget {
   readonly #pixels = new Map<`${number},${number}`, Pixel>();
   readonly #randomize: boolean;
   readonly #cooldown: number;
+  readonly #reloadInterval: number;
   readonly #pending = new Set<Pixel>();
   #lock = deferred();
   #board!: PaintBoard;
@@ -107,6 +109,7 @@ export class LuoguPainter extends EventTarget {
     tokens,
     randomize = false,
     cooldown = 31000,
+    reloadInterval = 300000,
     boardURL,
     paintURL,
     socket,
@@ -122,6 +125,7 @@ export class LuoguPainter extends EventTarget {
     }
     this.#randomize = randomize;
     this.#cooldown = cooldown;
+    this.#reloadInterval = reloadInterval;
     this.#connect({ boardURL, paintURL, socket });
     if (tokens) {
       for (const token of tokens) {
@@ -161,6 +165,8 @@ export class LuoguPainter extends EventTarget {
           },
         }),
       );
+      const id = setTimeout(() => board.close(), this.#reloadInterval);
+      board.addEventListener("close", () => clearTimeout(id), { once: true });
     });
     board.addEventListener("update", (event) => {
       const data = event.detail;
